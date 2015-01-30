@@ -11,8 +11,6 @@
 #include <sys/ioctl.h>
 
 #include "rnotify.h"
-/* Hack */
-#include "../constants.h"
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
 
