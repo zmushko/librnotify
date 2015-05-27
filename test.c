@@ -34,12 +34,6 @@ int main(int argc, char* argv[])
 
 	for(;;)
 	{
-		FILE* f = fopen("/var/readydropms/rd.fifo", "w");
-		if(!f)
-		{
-			printf("==%s\n", strerror(errno));
-		}
-
 		char* path = NULL;
 		uint32_t mask = 0;
 		waitNotify(ntf, &path, &mask);
@@ -49,36 +43,31 @@ int main(int argc, char* argv[])
 		}
 		if(mask & IN_MODIFY)
 		{
-			//printf("modify \t%s\n", path);
-			fprintf(f, "~%s*data/readydrop*readydrop\n", path + 15);
+			printf("modify \t%s\n", path);
 		}
 		if(mask & IN_CREATE)
 		{
-			//printf("create \t%s\n", path);
-			fprintf(f, "+%s*data/readydrop*readydrop\n", path + 15);
+			printf("create \t%s\n", path);
 		}
 		if(mask & IN_DELETE)
 		{
-			//printf("delete \t%s\n", path);
-			fprintf(f, "-%s*data/readydrop*readydrop\n", path + 15);
+			printf("delete \t%s\n", path);
 		}
 		if(mask & IN_DELETE_SELF)
 		{
-			//printf("delete self %s\n", path);
+			printf("delete self %s\n", path);
 		}
 		if(mask & IN_MOVE_SELF)
 		{
-			//printf("move self %s\n", path);
+			printf("move self %s\n", path);
 		}
 		if(mask & IN_MOVED_FROM)
 		{
-			//printf("moved from \t%s\n", path);
-			fprintf(f, "-%s*data/readydrop*readydrop\n", path + 15);
+			printf("moved from \t%s\n", path);
 		}
 		if(mask & IN_MOVED_TO)
 		{
-			//printf("moved to \t%s\n", path);
-			fprintf(f, "+%s*data/readydrop*readydrop\n", path + 15);
+			printf("moved to \t%s\n", path);
 		}
 		if(mask & IN_Q_OVERFLOW)
 		{
@@ -89,25 +78,6 @@ int main(int argc, char* argv[])
 			exit(-1);
 		}
 		free(path);
-		fclose(f);
-
-		/*
-		unsigned long pages = 0;
-		FILE* f = fopen(path_to_statm, "r");
-		if(f == NULL)
-		{
-			freeNotify(ntf);
-			return -1;
-		}
-		if(1 != fscanf(f, "%*u %lu", &pages))
-		{
-			freeNotify(ntf);
-			fclose(f);
-			return -1;
-		}
-		fclose(f);
-		*/
-		//printf("memsize=%lu\n", pages);
 	}
 	freeNotify(ntf);
 	return 0;
