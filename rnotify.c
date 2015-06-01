@@ -14,34 +14,6 @@
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
 
-typedef struct {
-	int fd;
-	unsigned int size_w;
-	char** w;
-	long max_name;
-	unsigned long max_queued_events;
-	uint32_t mask;
-	regex_t* exclude;
-	struct chainEvent* head;
-	struct chainEvent* tail;
-	struct Cookie* cookies;
-} Notify;
-
-struct chainEvent
-{
-	struct chainEvent* prev;
-	struct inotify_event* e;
-	struct chainEvent* next;
-};
-
-struct Cookie {
-	struct Cookie* prev;
-	uint32_t cookie;
-	char* path;
-	char* name;
-	struct Cookie* next;
-};
-
 static void* Malloc(size_t size)
 {
 	void* new_mem = (void*)malloc(size);
@@ -315,14 +287,7 @@ static inline int isDir(const char* path)
 
 static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 {
-	uint32_t mask	= ntf->mask;
-	/* Hack */
-	if (strstr(path, "/" HIDDEN_UPLOAD_DIR))
-	{
-		mask = IN_CREATE | IN_MOVED_TO;
-	}
-
-	int wd = inotify_add_watch(ntf->fd, path, ntf->mask /*mask*/ /*11.03.14+Hack ntf->mask*/);
+	int wd = inotify_add_watch(ntf->fd, path, ntf->mask);
 	if (-1 == wd)
 	{
 		return -1;
@@ -344,7 +309,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		ntf->size_w = wd;
 	}
 
-	if (ntf->w == NULL) // for [censored] Coverity
+	if (ntf->w == NULL)
 	{
 		return -1;
 	}
@@ -595,7 +560,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 		FD_ZERO(&set);
 		FD_SET(ntf->fd, &set);
 		struct timeval t = { 0, timeout };
-		int rd = select(ntf->fd + 1, &set, NULL, NULL, &t);
+		int rd = select(ntf->fd + 1, &set, NULL, NULL, (timeout) ? &t : NULL);
 		if (!rd)
 		{
 			return timeout;
@@ -729,6 +694,10 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 		ntf->w[e->wd - 1] = NULL;
 	}
 
+	if (e->mask & IN_Q_OVERFLOW)
+	{
+	}
+
 	*cookie = e->cookie;
 	free(e);
 
@@ -766,4 +735,3 @@ void freeNotify(Notify* ntf)
 	errno = safe_errno;
 	return;
 }
-
