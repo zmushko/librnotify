@@ -225,30 +225,35 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 	}
 
 	size_t e_size = sizeof(struct inotify_event) + e->len;
-	struct inotify_event* event = (struct inotify_event*)malloc(e_size);
+
+	struct inotify_event* event = (struct inotify_event*)malloc(e_size);	
 	if (event == NULL)
 	{
 		return -1;
-	}
+	}	
 	memcpy(event, e, e_size);
-	struct chainEvent* element = (struct chainEvent*)malloc(sizeof(struct chainEvent));
+
+	struct chainEvent* element = (struct chainEvent*)malloc(sizeof(struct chainEvent));	
 	if (element == NULL)
 	{
 		free(event);
 		return -1;
-	}
+	}	
 	element->e = event;
 	element->next = ntf->tail;
 	element->prev = NULL;
+	
 	if (ntf->tail != NULL)
 	{
 		ntf->tail->prev = element;
 	}
 	ntf->tail = element;
+	
 	if (ntf->head == NULL)
 	{
 		ntf->head = element;
 	}
+
 	return 0;
 }
 
@@ -261,11 +266,13 @@ static struct inotify_event* pullChainEvent(Notify* ntf)
 	struct inotify_event* event = ntf->head->e;
 	struct chainEvent* prev = ntf->head->prev;
 	free(ntf->head);
-	ntf->head = prev;
+	ntf->head = prev;	
+	
 	if (prev == NULL)
 	{
 		ntf->tail = NULL;
 	}
+
 	return event;
 }
 
@@ -541,6 +548,7 @@ static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 			ntf->w[i] = p;
 		}
 	}
+	
 	return 0;
 }
 
@@ -710,12 +718,14 @@ void freeNotify(Notify* ntf)
 	{
 		return;
 	}
+	
 	int safe_errno = errno;
 	struct inotify_event* e = NULL;
 	while (NULL != (e = pullChainEvent(ntf)))
 	{
 		free(e);
 	}
+	
 	size_t i = 0;
 	for (i = 0; i < ntf->size_w; i++)
 	{
@@ -725,13 +735,15 @@ void freeNotify(Notify* ntf)
 		}
 		inotify_rm_watch(ntf->fd, i + 1);
 	}
+	
 	close(ntf->fd);
 	if (ntf->exclude)
 	{
 		regfree(ntf->exclude);
 		free(ntf->exclude);
 	}
-	free(ntf);
+	free(ntf);	
 	errno = safe_errno;
+	
 	return;
 }
