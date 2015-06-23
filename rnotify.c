@@ -252,7 +252,7 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 	return 0;
 }
 
-static struct inotify_event* outChainEvent(Notify* ntf)
+static struct inotify_event* pullChainEvent(Notify* ntf)
 {
 	if (ntf->head == NULL)
 	{
@@ -554,7 +554,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 	}
 
 	struct inotify_event* e = NULL;
-	while (NULL == (e = outChainEvent(ntf)))
+	while (NULL == (e = pullChainEvent(ntf)))
 	{
 		fd_set set;
 		FD_ZERO(&set);
@@ -712,7 +712,7 @@ void freeNotify(Notify* ntf)
 	}
 	int safe_errno = errno;
 	struct inotify_event* e = NULL;
-	while (NULL != (e = outChainEvent(ntf)))
+	while (NULL != (e = pullChainEvent(ntf)))
 	{
 		free(e);
 	}
