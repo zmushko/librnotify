@@ -21,6 +21,7 @@ static void* Malloc(size_t size)
 		fprintf(stderr, "fatal error: malloc()\n");
 		exit(EXIT_FAILURE);
 	}
+	
 	return new_mem;
 }
 
@@ -55,6 +56,7 @@ static int addCookie(struct Cookie** p, const char* path, const char* name, uint
 
 	c->next = new_p;
 	new_p->prev = c;
+	
 	return 0;
 }
 
@@ -81,6 +83,7 @@ static struct Cookie* getCookie(struct Cookie** head, uint32_t cookie)
 		}
 		c = c->next;
 	}
+	
 	return NULL;
 }
 
