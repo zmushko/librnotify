@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <string.h>
 #include <unistd.h>
-#include <errno.h>
 #include <dirent.h>
 #include <stddef.h>
 #include <sys/stat.h>
