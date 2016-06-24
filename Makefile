@@ -1,6 +1,10 @@
 CC ?= gcc
 CFLAGS += -g -Wall -pedantic -std=gnu99
 
+static :
+	$(CC) $(CFLAGS) -fPIC -c rnotify.c -D_FILE_OFFSET_BITS=64
+	ar cr librnotify.a rnotify.o	
+
 all :	rnotify test.c
 	$(CC) $(CFLAGS) test.c rnotify.o
 
@@ -11,4 +15,5 @@ rnotify : rnotify.c rnotify.h
 
 clean :
 	rm -f *.o
+	rm -f *.so
 	rm -f *.a
