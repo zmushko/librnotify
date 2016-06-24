@@ -418,14 +418,15 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	return 0;
 }
 
-Notify* initNotify(const char* path, const uint32_t mask, const char* exclude)
+Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 {
-	if (path == NULL)
+	if (path == NULL || path[0] == NULL)
 	{
 		errno = EINVAL;
 		return NULL;
 	}
 
+	size_t i	= 0;
 	size_t size	= sizeof(Notify);
 	Notify* ntf	= (Notify*)malloc(size);
 	if (ntf == NULL)
@@ -440,11 +441,18 @@ Notify* initNotify(const char* path, const uint32_t mask, const char* exclude)
 	ntf->tail	= NULL;
 	ntf->cookies	= NULL;
 
-	ntf->max_name = pathconf(path, _PC_NAME_MAX);
-	if (-1 == ntf->max_name)
+	for (i = 0; path[i]; ++i)
 	{
-		free(ntf);
-		return NULL;
+		if (!access(path[i], F_OK))
+		{
+			long max_name = pathconf(path[i], _PC_NAME_MAX);
+			if (-1 == max_name)
+			{
+				free(ntf);
+				return NULL;
+			}
+			ntf->max_name = (max_name > ntf->max_name) ? max_name : ntf->max_name;
+		}
 	}
 
 	if (exclude == NULL)
@@ -513,19 +521,25 @@ Notify* initNotify(const char* path, const uint32_t mask, const char* exclude)
 		return NULL;
 	}
 
-	if (-1 == addNotify(ntf, path, 0))
+	for (i = 0; path[i]; ++i)
 	{
-		if (ntf->exclude)
+		if (!access(path[i], F_OK))
 		{
-			regfree(ntf->exclude);
-			free(ntf->exclude);
+			if (-1 == addNotify(ntf, path[i], 0))
+			{
+				if (ntf->exclude)
+				{
+					regfree(ntf->exclude);
+					free(ntf->exclude);
+				}
+				if (close(ntf->fd))
+				{
+					errno = 0;
+				}
+				free(ntf);
+				return NULL;
+			}
 		}
-		if (close(ntf->fd))
-		{
-			errno = 0;
-		}
-		free(ntf);
-		return NULL;
 	}
 
 	return ntf;
