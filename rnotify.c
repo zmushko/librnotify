@@ -710,6 +710,14 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 			free(newpath);
 			freeCookie(C);
 		}
+		else
+		{
+			if (-1 == addNotify(ntf, *path, 0))
+			{
+				free(e);
+				return -1;
+			}		
+		}
 	}
 
 	if (e->mask & IN_IGNORED)
