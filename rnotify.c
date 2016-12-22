@@ -108,11 +108,7 @@ static ssize_t lstPush(char*** lst, const char* str)
 
 	if (*lst == NULL)
 	{
-		*lst = (char**)malloc(len_ptr);
-		if (*lst == NULL)
-		{
-			return -1;
-		}
+		*lst = (char**)Malloc(len_ptr);
 		(*lst)[0] = NULL;
 	}
 	else
@@ -123,11 +119,7 @@ static ssize_t lstPush(char*** lst, const char* str)
 		}
 	}
 
-	(*lst)[i] = (char*)malloc(strlen(str) + 1);
-	if ((*lst)[i] == NULL)
-	{
-		return -1;
-	}
+	(*lst)[i] = (char*)Malloc(strlen(str) + 1);
 	strcpy((*lst)[i], str);
 
 	char** t = (char**)realloc(*lst, len_ptr*(i + 2));
@@ -175,12 +167,7 @@ static char** lstReadDir(const char* path)
 	}
 
 	size_t dirent_sz	= offsetof(struct dirent, d_name) + pathconf(path, _PC_NAME_MAX);
-	struct dirent* entry	= (struct dirent*)malloc(dirent_sz + 1);
-	if (entry == NULL)
-	{
-		closedir(dp);
-		return NULL;
-	}
+	struct dirent* entry	= (struct dirent*)Malloc(dirent_sz + 1);
 
 	char** lst = NULL;
 	for (;;)
@@ -228,19 +215,10 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 
 	size_t e_size = sizeof(struct inotify_event) + e->len;
 
-	struct inotify_event* event = (struct inotify_event*)malloc(e_size);	
-	if (event == NULL)
-	{
-		return -1;
-	}	
+	struct inotify_event* event = (struct inotify_event*)Malloc(e_size);
 	memcpy(event, e, e_size);
 
-	struct chainEvent* element = (struct chainEvent*)malloc(sizeof(struct chainEvent));	
-	if (element == NULL)
-	{
-		free(event);
-		return -1;
-	}	
+	struct chainEvent* element = (struct chainEvent*)Malloc(sizeof(struct chainEvent));	
 	element->e = event;
 	element->next = ntf->tail;
 	element->prev = NULL;
@@ -328,11 +306,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		free(ntf->w[wd - 1]);
 	}
 
-	ntf->w[wd - 1] = (char*)malloc(strlen(path) + 1);
-	if (ntf->w[wd - 1] == NULL)
-	{
-		return -1;
-	}
+	ntf->w[wd - 1] = (char*)Malloc(strlen(path) + 1);
 	strcpy(ntf->w[wd - 1], path);
 
 	char** elems = lstReadDir(path);
@@ -344,12 +318,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	size_t i = 0;
 	while (elems[i])
 	{
-		char* path_elem = (char*)malloc(strlen(path) + strlen(elems[i]) + 2);
-		if (path_elem == NULL)
-		{
-			lstFree(elems);
-			return -1;
-		}
+		char* path_elem = (char*)Malloc(strlen(path) + strlen(elems[i]) + 2);
 		sprintf(path_elem, "%s/%s", path, elems[i]);
 		int is_dir = isDir(path_elem);
 		if (-1 == is_dir)
@@ -358,13 +327,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 			lstFree(elems);
 			return -1;
 		}
-		struct inotify_event* e = (struct inotify_event*)malloc(sizeof(struct inotify_event) + strlen(elems[i]) + 1);
-		if (e == NULL)
-		{
-			free(path_elem);
-			lstFree(elems);
-			return -1;
-		}
+		struct inotify_event* e = (struct inotify_event*)Malloc(sizeof(struct inotify_event) + strlen(elems[i]) + 1);
 		memset(e, 0, sizeof(struct inotify_event));
 		e->wd = wd;
 		if (is_dir)
@@ -388,13 +351,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		free(e);
 		if (!is_dir)
 		{
-			e = (struct inotify_event*)malloc(sizeof(struct inotify_event) + strlen(elems[i]) + 1);
-			if (e == NULL)
-			{
-				free(path_elem);
-				lstFree(elems);
-				return -1;
-			}
+			e = (struct inotify_event*)Malloc(sizeof(struct inotify_event) + strlen(elems[i]) + 1);
 			memset(e, 0, sizeof(struct inotify_event));
 			e->wd = wd;
 			e->mask = IN_CLOSE_WRITE;
@@ -428,18 +385,9 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 
 	size_t i	= 0;
 	size_t size	= sizeof(Notify);
-	Notify* ntf	= (Notify*)malloc(size);
-	if (ntf == NULL)
-	{
-		return NULL;
-	}
+	Notify* ntf	= (Notify*)Malloc(size);
 	memset(ntf, 0, size);
 	ntf->mask	= mask;
-	ntf->size_w	= 0;
-	ntf->w		= NULL;
-	ntf->head	= NULL;
-	ntf->tail	= NULL;
-	ntf->cookies	= NULL;
 
 	for (i = 0; path[i]; ++i)
 	{
@@ -455,18 +403,9 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 		}
 	}
 
-	if (exclude == NULL)
+	if (exclude)
 	{
-		ntf->exclude = NULL;
-	}
-	else
-	{
-		regex_t* preg = (regex_t*)malloc(sizeof(regex_t));
-		if (preg == NULL)
-		{
-			free(ntf);
-			return NULL;
-		}
+		regex_t* preg = (regex_t*)Malloc(sizeof(regex_t));
 		memset(preg, 0, sizeof(regex_t));
 		if (0 != regcomp(preg, exclude, REG_EXTENDED))
 		{
@@ -489,6 +428,7 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 		free(ntf);
 		return NULL;
 	}
+
 	if (1 != fscanf(f, "%10lu", &max_queued_events))
 	{
 		if (ntf->exclude)
@@ -503,7 +443,9 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 		free(ntf);
 		return NULL;
 	}
+
 	ntf->max_queued_events = max_queued_events;
+
 	if (fclose(f))
 	{
 		errno = 0;
@@ -601,11 +543,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 			return -1;
 		}
 		buf_size *= event_size + ntf->max_name + 1;
-		char* buffer = (char*)malloc(buf_size);
-		if (buffer == NULL)
-		{
-			return -1;
-		}
+		char* buffer = (char*)Malloc(buf_size);
 		memset(buffer, 0, buf_size);
 
 		int safe_errno = errno;
