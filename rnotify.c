@@ -240,7 +240,7 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 	memcpy(event, e, e_size);
 
 	struct chainEvent* element = (struct chainEvent*)malloc(sizeof(struct chainEvent));
-	if (element)
+	if (element == NULL)
 	{
 		free(event);
 		return -1;
