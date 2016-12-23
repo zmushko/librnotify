@@ -25,9 +25,10 @@ int main(int argc, char* argv[])
 	char* dir[2] = {argv[1], NULL};
 	printf("Start to watch %s page_size=%ld max_memory_pages=%ld\n", dir[0], page_size, max_memory_pages);
 
-	uint32_t mask = IN_MODIFY | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF | IN_MOVED_FROM | IN_MOVED_TO;
+	uint32_t mask = IN_ALL_EVENTS;
 
-	Notify* ntf = initNotify(dir, mask, "^\\.");
+	//Notify* ntf = initNotify(dir, mask, "^\\.");
+	Notify* ntf = initNotify(dir, mask, NULL);
 	if (ntf == NULL)
 	{
 		exit(EXIT_FAILURE);
@@ -43,9 +44,29 @@ int main(int argc, char* argv[])
 		{
 			exit(EXIT_FAILURE);
 		}
+		if (mask & IN_ATTRIB)
+		{
+			//printf("attrib \t%s cookie=%d\n", path, cookie);
+		}
+		if (mask & IN_CLOSE_WRITE)
+		{
+			//printf("close write \t%s cookie=%d\n", path, cookie);
+		}
+		if (mask & IN_CLOSE_NOWRITE)
+		{
+			//printf("close nowrite \t%s cookie=%d\n", path, cookie);
+		}
+		if (mask & IN_ACCESS)
+		{
+			//printf("access \t%s cookie=%d\n", path, cookie);
+		}
 		if (mask & IN_MODIFY)
 		{
-			printf("modify \t%s cookie=%d\n", path, cookie);
+			//printf("modify \t%s cookie=%d\n", path, cookie);
+		}
+		if (mask & IN_OPEN)
+		{
+			//printf("open \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CREATE)
 		{
