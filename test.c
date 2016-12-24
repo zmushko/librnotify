@@ -45,27 +45,27 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_ATTRIB)
 		{
-			//printf("attrib \t%s cookie=%d\n", path, cookie);
+			printf("attrib \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_WRITE)
 		{
-			//printf("close write \t%s cookie=%d\n", path, cookie);
+			printf("close write \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_NOWRITE)
 		{
-			//printf("close nowrite \t%s cookie=%d\n", path, cookie);
+			printf("close nowrite \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_ACCESS)
 		{
-			//printf("access \t%s cookie=%d\n", path, cookie);
+			printf("access \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_MODIFY)
 		{
-			//printf("modify \t%s cookie=%d\n", path, cookie);
+			printf("modify \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_OPEN)
 		{
-			//printf("open \t%s cookie=%d\n", path, cookie);
+			printf("open \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CREATE)
 		{
@@ -77,11 +77,11 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_DELETE_SELF)
 		{
-			//printf("delete self %s\n", path);
+			printf("delete self %s\n", path);
 		}
 		if (mask & IN_MOVE_SELF)
 		{
-			//printf("move self %s\n", path);
+			printf("move self %s\n", path);
 		}
 		if (mask & IN_MOVED_FROM)
 		{

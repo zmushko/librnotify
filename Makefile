@@ -7,6 +7,7 @@ static :
 
 all :	rnotify test.c
 	$(CC) $(CFLAGS) test.c rnotify.o liblst.o
+	#$(CC) $(CFLAGS) rnotifyd.c rnotify.o liblst.o
 
 rnotify : rnotify.c rnotify.h 
 	$(CC) $(CFLAGS) -fPIC -c rnotify.c liblst.c -D_FILE_OFFSET_BITS=64

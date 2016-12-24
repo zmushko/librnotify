@@ -559,7 +559,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 		free(buffer);
 	}
 
-	*path		= malloc(1);
+	*path = malloc(1);
 	if (*path == NULL)
 	{
 		return -1;
