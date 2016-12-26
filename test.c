@@ -25,7 +25,8 @@ int main(int argc, char* argv[])
 	char* dir[2] = {argv[1], NULL};
 	printf("Start to watch %s page_size=%ld max_memory_pages=%ld\n", dir[0], page_size, max_memory_pages);
 
-	uint32_t mask = IN_ALL_EVENTS;
+	//uint32_t mask = IN_ALL_EVENTS;
+	uint32_t mask = IN_MODIFY | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF | IN_MOVED_FROM | IN_MOVED_TO;
 
 	Notify* ntf = initNotify(dir, mask, "^\\.");
 	if (ntf == NULL)
@@ -45,27 +46,27 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_ATTRIB)
 		{
-			printf("attrib \t%s cookie=%d\n", path, cookie);
+			//printf("attrib \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_WRITE)
 		{
-			printf("close write \t%s cookie=%d\n", path, cookie);
+			//printf("close write \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_NOWRITE)
 		{
-			printf("close nowrite \t%s cookie=%d\n", path, cookie);
+			//printf("close nowrite \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_ACCESS)
 		{
-			printf("access \t%s cookie=%d\n", path, cookie);
+			//printf("access \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_MODIFY)
 		{
-			printf("modify \t%s cookie=%d\n", path, cookie);
+			//printf("modify \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_OPEN)
 		{
-			printf("open \t%s cookie=%d\n", path, cookie);
+			//printf("open \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CREATE)
 		{
@@ -77,19 +78,19 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_DELETE_SELF)
 		{
-			printf("delete self %s\n", path);
+			//printf("delete self %s\n", path);
 		}
 		if (mask & IN_MOVE_SELF)
 		{
-			printf("move self %s\n", path);
+			//printf("move self %s\n", path);
 		}
 		if (mask & IN_MOVED_FROM)
 		{
-			printf("moved from \t%s cookie=%d\n", path, cookie);
+			//printf("moved from \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_MOVED_TO)
 		{
-			printf("moved to \t%s cookie=%d\n", path, cookie);
+			//printf("moved to \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_Q_OVERFLOW)
 		{
