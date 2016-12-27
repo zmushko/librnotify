@@ -489,23 +489,9 @@ static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 	return 0;
 }
 
-static size_t totalRead(int fd, char** buf)
+static ssize_t totalRead(int fd, char** buf, size_t len)
 {
-	size_t len = 0;
-
-	if (-1 == ioctl(fd, FIONREAD, &len))
-	{
-		return -1;
-	}
-
-	*buf = (char*)malloc(len);
-	if (*buf == NULL)
-	{
-		return -1;
-	}
-	memset(*buf, 0, len);
-
-	size_t total	= 0;
+	ssize_t total	= 0;
 	ssize_t done	= 0;
 
 	while (len > total)
@@ -525,14 +511,8 @@ static size_t totalRead(int fd, char** buf)
 			{
 				total = -1;
 				break;
-			}			
+			}
 		}
-	}
-
-	if (total <= 0)
-	{
-		free(*buf);
-		*buf = NULL;
 	}
 
 	return total;
@@ -563,16 +543,37 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 		{
 			return -1;
 		}
-		
-		char* buffer = NULL;
-		ssize_t length = totalRead(ntf->fd, &buffer);
-		if (-1 == length)
+
+		size_t length = 0;
+		if (-1 == ioctl(ntf->fd, FIONREAD, &length))
 		{
-			free(buffer);
 			return -1;
 		}
 
 		int event_size = sizeof(struct inotify_event);
+		if (length > (ntf->max_queued_events * (event_size + ntf->max_name)))
+		{
+			errno = EMSGSIZE;
+			return -1;
+		}
+		else if (length > 16384)
+		{
+			length = 16 * (event_size + ntf->max_name);
+		}
+
+		char* buffer = (char*)malloc(length);
+		if (buffer == NULL)
+		{
+			return -1;
+		}
+		memset(buffer, 0, length);
+
+		if (length != totalRead(ntf->fd, &buffer, length))
+		{
+			free(buffer);	
+			return -1;
+		}
+		
 		size_t i = 0;
 		while (i < length)
 		{
