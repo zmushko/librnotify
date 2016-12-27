@@ -25,10 +25,10 @@ int main(int argc, char* argv[])
 	char* dirs[2] = {argv[1], NULL};
 	printf("Start to watch %s page_size=%ld max_memory_pages=%ld\n", dirs[0], page_size, max_memory_pages);
 
-	//uint32_t mask = IN_ALL_EVENTS;
-	uint32_t mask = IN_MODIFY | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF | IN_MOVED_FROM | IN_MOVED_TO;
+	uint32_t mask = IN_ALL_EVENTS;
+	//uint32_t mask = IN_MODIFY | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF | IN_MOVED_FROM | IN_MOVED_TO;
 
-	Notify* ntf = initNotify(dirs, mask, "^\\.");
+	Notify* ntf = initNotify(dirs, mask/*, "^\\."*/);
 	if (ntf == NULL)
 	{
 		exit(EXIT_FAILURE);
@@ -42,7 +42,8 @@ int main(int argc, char* argv[])
 		waitNotify(ntf, &path, &mask, 0, &cookie);
 		if (path == NULL)
 		{
-			exit(EXIT_FAILURE);
+			printf("path=NULL\n");
+			//exit(EXIT_FAILURE);
 		}
 		if (mask & IN_ATTRIB)
 		{
@@ -95,9 +96,11 @@ int main(int argc, char* argv[])
 		if (mask & IN_Q_OVERFLOW)
 		{
 			printf("overflow\n");
+			//exit(-1);
 		}
 		if (!strlen(path))
 		{
+			printf("path=0\n");
 			exit(-1);
 		}
 		free(path);
