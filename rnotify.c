@@ -43,6 +43,8 @@ struct _rnotify {
 };
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
+#define MAX_LENGTH_BUFFER		16384
+#define MAX_NUMBER_BUFFER		16
 
 static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
 {
@@ -209,6 +211,15 @@ static inline int isDir(const char* path)
 	return 0;
 }
 
+static void updateMaxName(Notify* ntf, char* path)
+{
+	if (!access(path, F_OK))
+	{
+		long max_name = pathconf(path, _PC_NAME_MAX);
+		ntf->max_name = (max_name > ntf->max_name) ? max_name : ntf->max_name;
+	}
+}
+
 static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 {
 	int wd = inotify_add_watch(ntf->fd, path, ntf->mask);
@@ -273,20 +284,22 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 			lstFree(elems);
 			return -1;
 		}
-
-		struct inotify_event* e = (struct inotify_event*)malloc(sizeof(struct inotify_event) + strlen(elems[i]) + 1);
+		
+		int event_size = sizeof(struct inotify_event);
+		struct inotify_event* e = (struct inotify_event*)malloc(event_size + strlen(elems[i]) + 1);
 		if (e == NULL)
 		{
 			free(path_elem);
 			lstFree(elems);
 			return -1;
 		}
-		memset(e, 0, sizeof(struct inotify_event));
+		memset(e, 0, event_size);
 
 		e->wd = wd;
 		if (is_dir)
 		{
 			e->mask = IN_CREATE | IN_ISDIR;
+			updateMaxName(ntf, path_elem);
 		}
 		else
 		{
@@ -306,14 +319,14 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 
 		if (!is_dir)
 		{
-			e = (struct inotify_event*)malloc(sizeof(struct inotify_event) + strlen(elems[i]) + 1);
+			e = (struct inotify_event*)malloc(event_size + strlen(elems[i]) + 1);
 			if (e == NULL)
 			{
 				free(path_elem);
 				lstFree(elems);
 				return -1;
 			}
-			memset(e, 0, sizeof(struct inotify_event));
+			memset(e, 0, event_size);
 			
 			e->wd = wd;
 			e->mask = IN_CLOSE_WRITE;
@@ -358,16 +371,7 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 
 	for (i = 0; path[i]; ++i)
 	{
-		if (!access(path[i], F_OK))
-		{
-			long max_name = pathconf(path[i], _PC_NAME_MAX);
-			if (-1 == max_name)
-			{
-				free(ntf);
-				return NULL;
-			}
-			ntf->max_name = (max_name > ntf->max_name) ? max_name : ntf->max_name;
-		}
+		updateMaxName(ntf, path[i]);
 	}
 
 	if (exclude)
@@ -556,9 +560,9 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 			errno = EMSGSIZE;
 			return -1;
 		}
-		else if (length > 16384)
+		else if (length > MAX_LENGTH_BUFFER)
 		{
-			length = 16 * (event_size + ntf->max_name);
+			length = MAX_NUMBER_BUFFER * (event_size + ntf->max_name);
 		}
 
 		char* buffer = (char*)malloc(length);
@@ -680,7 +684,8 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 				free(e);
 				return -1;
 			}
-
+			
+			/* TODO seems this is paranoia
 			if (-1 == addNotify(ntf, newpath, 0))
 			{
 				free(oldpath);
@@ -689,6 +694,8 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 				free(e);
 				return -1;
 			}
+			*/
+
 			free(oldpath);
 			free(newpath);
 			freeCookie(C);
