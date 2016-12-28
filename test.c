@@ -39,7 +39,18 @@ int main(int argc, char* argv[])
 		char* path = NULL;
 		uint32_t mask = 0;
 		uint32_t cookie = 0;
-		waitNotify(ntf, &path, &mask, 0, &cookie);
+		if (-1 == waitNotify(ntf, &path, &mask, 0, &cookie))
+		{
+			if (errno == ENOSPC)
+			{
+				printf("ERROR: The user limit on the total number of inotify watches was reached or the kernel failed to allocate a needed resource.\n");
+			}
+			else
+			{
+				printf("ERROR: %s\n", strerror(errno));
+			}
+			exit(EXIT_FAILURE);
+		}
 		if (path == NULL)
 		{
 			printf("path=NULL\n");
@@ -47,19 +58,19 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_ATTRIB)
 		{
-			//printf("attrib \t%s cookie=%d\n", path, cookie);
+			printf("attrib \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_WRITE)
 		{
-			//printf("close write \t%s cookie=%d\n", path, cookie);
+			printf("close write \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_NOWRITE)
 		{
-			//printf("close nowrite \t%s cookie=%d\n", path, cookie);
+			printf("close nowrite \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_ACCESS)
 		{
-			//printf("access \t%s cookie=%d\n", path, cookie);
+			printf("access \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_MODIFY)
 		{
@@ -67,7 +78,7 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_OPEN)
 		{
-			//printf("open \t%s cookie=%d\n", path, cookie);
+			printf("open \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CREATE)
 		{
@@ -79,7 +90,7 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_DELETE_SELF)
 		{
-			printf("delete self %s\n", path);
+			//printf("delete self %s\n", path);
 		}
 		if (mask & IN_MOVE_SELF)
 		{

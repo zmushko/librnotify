@@ -43,8 +43,7 @@ struct _rnotify {
 };
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
-#define MAX_LENGTH_BUFFER		16384
-#define MAX_NUMBER_BUFFER		16
+#define MAX_NUMBER_BUFFER	255
 
 static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
 {
@@ -184,6 +183,7 @@ static struct inotify_event* pullChainEvent(Notify* ntf)
 	{
 		return NULL;
 	}
+
 	struct inotify_event* event = ntf->head->e;
 	struct chainEvent* prev = ntf->head->prev;
 	free(ntf->head);
@@ -533,7 +533,16 @@ static ssize_t totalRead(int fd, char** buf, size_t len)
 	return total;
 }
 
-int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout, uint32_t* cookie)
+int Select(int fd, int timeout)
+{
+	fd_set set;
+	FD_ZERO(&set);
+	FD_SET(fd, &set);
+	struct timeval t = { 0, timeout > 0 ? timeout : 0 };
+	return select(fd + 1, &set, NULL, NULL, (-1 == timeout) ? NULL : &t);
+}
+
+int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint32_t* cookie)
 {
 	if (ntf == NULL
 		|| path	== NULL)
@@ -543,13 +552,9 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 	}
 
 	struct inotify_event* e = NULL;
-	while (NULL == (e = pullChainEvent(ntf)))
-	{
-		fd_set set;
-		FD_ZERO(&set);
-		FD_SET(ntf->fd, &set);
-		struct timeval t = { 0, timeout };
-		int rd = select(ntf->fd + 1, &set, NULL, NULL, (timeout) ? &t : NULL);
+	while ( 0 < Select(ntf->fd, 0) || NULL == (e = pullChainEvent(ntf)))
+	{	
+		int rd = Select(ntf->fd, (timeout) ? timeout : -1);
 		if (!rd)
 		{
 			return timeout;
@@ -571,10 +576,9 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 			errno = EMSGSIZE;
 			return -1;
 		}
-		else if (length > MAX_LENGTH_BUFFER)
-		{
-			length = MAX_NUMBER_BUFFER * (event_size + ntf->max_name);
-		}
+		
+		size_t length2 = MAX_NUMBER_BUFFER * (event_size + ntf->max_name + 1);
+		length = (length > length2) ? length2 : length;
 
 		char* buffer = (char*)malloc(length);
 		if (buffer == NULL)
@@ -586,12 +590,11 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout
 		ssize_t total_read = totalRead(ntf->fd, &buffer, length);
 		if (length != total_read)
 		{
-			free(buffer);	
 			if (errno == EINVAL)
 			{
 				*mask |= IN_Q_OVERFLOW;
-				return 0;
 			}
+			free(buffer);	
 			return -1;
 		}
 		
@@ -768,6 +771,7 @@ void freeNotify(Notify* ntf)
 	}
 	
 	close(ntf->fd);
+
 	/*
 	if (ntf->exclude)
 	{
