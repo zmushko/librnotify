@@ -580,12 +580,15 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		ssize_t total_read = totalRead(ntf->fd, &buffer, length);
 		if (length != total_read)
 		{
+			int rval = -1;
 			if (errno == EINVAL)
 			{
 				*mask |= IN_Q_OVERFLOW;
+				rval = 0;
 			}
+
 			free(buffer);	
-			return -1;
+			return rval;
 		}
 		
 		size_t i = 0;
