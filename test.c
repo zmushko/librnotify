@@ -47,7 +47,7 @@ int main(int argc, char* argv[])
 			}
 			else
 			{
-				printf("ERROR: %s\n", strerror(errno));
+				printf("ERROR:%s:%d: %s\n", __FILE__, __LINE__, strerror(errno));
 			}
 			exit(EXIT_FAILURE);
 		}

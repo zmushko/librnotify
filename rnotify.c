@@ -43,7 +43,7 @@ struct _rnotify {
 };
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
-#define MAX_NUMBER_BUFFER	255
+#define MAX_NUMBER_BUFFER	65536
 
 static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
 {
@@ -197,22 +197,6 @@ static struct inotify_event* pullChainEvent(Notify* ntf)
 	return event;
 }
 
-static inline int isDir(const char* path)
-{
-	struct stat sb;
-	if (-1 == stat(path, &sb))
-	{
-		return -1;
-	}
-
-	if (S_ISDIR(sb.st_mode))
-	{
-		return 1;
-	}
-
-	return 0;
-}
-
 static void updateMaxName(Notify* ntf, char* path)
 {
 	if (!access(path, F_OK))
@@ -224,9 +208,14 @@ static void updateMaxName(Notify* ntf, char* path)
 
 static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 {
+	errno = 0;
 	int wd = inotify_add_watch(ntf->fd, path, ntf->mask);
 	if (-1 == wd)
 	{
+		if (errno == ENOENT)
+		{
+			return 0;
+		}
 		return -1;
 	}
 
@@ -279,13 +268,9 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 			return -1;
 		}
 		sprintf(path_elem, "%s/%s", path, elems[i]);
-		int is_dir = isDir(path_elem);
-		if (-1 == is_dir)
-		{
-			free(path_elem);
-			lstFree(elems);
-			return -1;
-		}
+		
+		struct stat sb;
+		int is_dir = (!stat(path, &sb) && S_ISDIR(sb.st_mode)) ? 1 : 0;
 		
 		int event_size = sizeof(struct inotify_event);
 		struct inotify_event* e = (struct inotify_event*)malloc(event_size + strlen(elems[i]) + 1);
@@ -551,15 +536,20 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		return -1;
 	}
 
+	int rd = 0;
 	struct inotify_event* e = NULL;
-	while ( 0 < Select(ntf->fd, 0) || NULL == (e = pullChainEvent(ntf)))
+	while ( 0 < (rd = Select(ntf->fd, 0)) || NULL == (e = pullChainEvent(ntf)))
 	{	
-		int rd = Select(ntf->fd, (timeout) ? timeout : -1);
 		if (!rd)
 		{
-			return timeout;
+			rd = Select(ntf->fd, (timeout) ? timeout : -1);
+			if (!rd)
+			{
+				return timeout;
+			}
 		}
-		if (rd < 0)
+
+		if (-1 == rd)
 		{
 			return -1;
 		}
@@ -571,7 +561,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		}
 
 		int event_size = sizeof(struct inotify_event);
-		if (length > (ntf->max_queued_events * (event_size + ntf->max_name)))
+		if (length > (ntf->max_queued_events * (event_size + ntf->max_name + 1)))
 		{
 			errno = EMSGSIZE;
 			return -1;
