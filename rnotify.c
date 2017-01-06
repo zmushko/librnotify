@@ -21,7 +21,8 @@ struct chainEvent
         struct chainEvent* next;
 };
 
-struct Cookie {
+struct Cookie 
+{
         struct Cookie* prev;
         uint32_t cookie;
         char* path;
@@ -29,7 +30,8 @@ struct Cookie {
         struct Cookie* next;
 };
 
-struct _rnotify {
+struct _rnotify 
+{
         int fd;
         unsigned int size_w;
         char** w;
@@ -43,7 +45,7 @@ struct _rnotify {
 };
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
-#define MAX_NUMBER_BUFFER	65536
+// #define MAX_NUMBER_BUFFER	65536
 
 static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
 {
@@ -167,7 +169,7 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 	{
 		ntf->tail->prev = element;
 	}
-	ntf->tail	= element;
+	ntf->tail = element;
 	
 	if (ntf->head == NULL)
 	{
@@ -567,8 +569,8 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			return -1;
 		}
 		
-		size_t length2 = MAX_NUMBER_BUFFER * (event_size + ntf->max_name + 1);
-		length = (length > length2) ? length2 : length;
+		// size_t length2 = MAX_NUMBER_BUFFER * (event_size + ntf->max_name + 1);
+		// length = (length > length2) ? length2 : length;
 
 		char* buffer = (char*)malloc(length);
 		if (buffer == NULL)
