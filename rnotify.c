@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/inotify.h>
-//#include <regex.h>
 
 #include "liblst.h"
 #include "rnotify.h"
@@ -45,7 +44,6 @@ struct _rnotify
 };
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
-// #define MAX_NUMBER_BUFFER	65536
 
 static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
 {
@@ -138,13 +136,6 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 		errno = EINVAL;
 		return -1;
 	}
-
-	/*
-	if (ntf->exclude && !regexec(ntf->exclude, e->name, 0, NULL, 0))
-	{
-		return 0;
-	}
-	*/
 
 	size_t e_size = sizeof(struct inotify_event) + e->len;
 
@@ -340,7 +331,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	return 0;
 }
 
-Notify* initNotify(char** path, const uint32_t mask/*, const char* exclude*/)
+Notify* initNotify(char** path, const uint32_t mask)
 {
 	if (path == NULL || path[0] == NULL)
 	{
@@ -363,51 +354,16 @@ Notify* initNotify(char** path, const uint32_t mask/*, const char* exclude*/)
 		updateMaxName(ntf, path[i]);
 	}
 
-	/*
-	if (exclude)
-	{
-		regex_t* preg = (regex_t*)malloc(sizeof(regex_t));
-		if (preg == NULL)
-		{
-			free(ntf);
-			return NULL;
-		}
-		memset(preg, 0, sizeof(regex_t));
-		if (0 != regcomp(preg, exclude, REG_EXTENDED))
-		{
-			free(ntf);
-			free(preg);
-			return NULL;
-		}
-		ntf->exclude = preg;
-	}
-	*/
-
 	unsigned long max_queued_events = 0;
 	FILE* f = fopen(PATH_MAX_QUEUED_EVENTS, "r");
 	if (f == NULL)
 	{
-		/*
-		if (ntf->exclude)
-		{
-			regfree(ntf->exclude);
-			// TODO does it make double free here?
-			free(ntf->exclude);
-		}
-		*/
 		free(ntf);
 		return NULL;
 	}
 
 	if (1 != fscanf(f, "%10lu", &max_queued_events))
 	{
-		/*
-		if (ntf->exclude)
-		{
-			regfree(ntf->exclude);
-			free(ntf->exclude);
-		}
-		*/
 		if (fclose(f))
 		{
 			errno = 0;
@@ -427,13 +383,6 @@ Notify* initNotify(char** path, const uint32_t mask/*, const char* exclude*/)
 	ntf->fd	= inotify_init();
 	if (-1 == ntf->fd)
 	{
-		/*
-		if (ntf->exclude)
-		{
-			regfree(ntf->exclude);
-			free(ntf->exclude);
-		}
-		*/
 		free(ntf);
 		return NULL;
 	}
@@ -444,13 +393,6 @@ Notify* initNotify(char** path, const uint32_t mask/*, const char* exclude*/)
 		{
 			if (-1 == addNotify(ntf, path[i], 0))
 			{
-				/*
-				if (ntf->exclude)
-				{
-					regfree(ntf->exclude);
-					free(ntf->exclude);
-				}
-				*/
 				if (close(ntf->fd))
 				{
 					errno = 0;
@@ -569,9 +511,6 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			return -1;
 		}
 		
-		// size_t length2 = MAX_NUMBER_BUFFER * (event_size + ntf->max_name + 1);
-		// length = (length > length2) ? length2 : length;
-
 		char* buffer = (char*)malloc(length);
 		if (buffer == NULL)
 		{
@@ -767,13 +706,6 @@ void freeNotify(Notify* ntf)
 	
 	close(ntf->fd);
 
-	/*
-	if (ntf->exclude)
-	{
-		regfree(ntf->exclude);
-		free(ntf->exclude);
-	}
-	*/
 	free(ntf->w);
 	free(ntf);	
 	errno = safe_errno;
