@@ -58,19 +58,19 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_ATTRIB)
 		{
-			printf("attrib \t%s cookie=%d\n", path, cookie);
+			//printf("attrib \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_WRITE)
 		{
-			printf("close write \t%s cookie=%d\n", path, cookie);
+			//printf("close write \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CLOSE_NOWRITE)
 		{
-			printf("close nowrite \t%s cookie=%d\n", path, cookie);
+			//printf("close nowrite \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_ACCESS)
 		{
-			printf("access \t%s cookie=%d\n", path, cookie);
+			//printf("access \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_MODIFY)
 		{
@@ -78,7 +78,7 @@ int main(int argc, char* argv[])
 		}
 		if (mask & IN_OPEN)
 		{
-			printf("open \t%s cookie=%d\n", path, cookie);
+			//printf("open \t%s cookie=%d\n", path, cookie);
 		}
 		if (mask & IN_CREATE)
 		{

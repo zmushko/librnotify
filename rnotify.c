@@ -29,21 +29,130 @@ struct Cookie
         struct Cookie* next;
 };
 
+struct wd_map
+{
+	unsigned long wd;
+	char* w;
+};
+
 struct _rnotify 
 {
         int fd;
-        unsigned int size_w;
+	/////
+        unsigned long size_w;
         char** w;
+	/////
+        unsigned long size_wd_total;
+        unsigned long size_wd_gaps;
+        struct wd_map** wd;
         long max_name;
         unsigned long max_queued_events;
         uint32_t mask;
-        //regex_t* exclude;
         struct chainEvent* head;
         struct chainEvent* tail;
         struct Cookie* cookies;
 };
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
+
+static int wdMap(Notify* ntf, unsigned long wd, const char* path)
+{
+	struct wd_map** t = (struct wd_map**)realloc(ntf->wd, (sizeof(void*)) * (ntf->size_wd_total + 1));
+	if (t == NULL)
+	{
+		return -1;
+	}
+
+	struct wd_map* w = (struct wd_map*)malloc(sizeof(struct wd_map));
+	if (w == NULL)
+	{
+		free(t);
+		return -1;
+	}
+
+	char* p = (char*)malloc(strlen(path) + 1);
+	if (p == NULL)
+	{
+		free(t);
+		free(w);
+		return -1;
+	}
+	strcpy(p, path);
+
+	ntf->wd = t;
+	ntf->wd[ntf->size_wd_total] = w;
+	ntf->wd[ntf->size_wd_total]->w = p;
+	ntf->wd[ntf->size_wd_total]->wd = wd;
+
+	++(ntf->size_wd_total);
+
+	return 0;
+}
+
+static char* wdMapGet(Notify* ntf, unsigned long wd)
+{
+	char* rval = NULL;
+
+	unsigned long i = 0;
+	for (; i < ntf->size_wd_total; ++i)
+	{
+		if (ntf->wd[i]->wd == wd)
+		{
+			rval = ntf->wd[i]->w;
+			break;
+		}
+	}
+
+	return rval;
+}
+
+static int wdMapVacuum(Notify* ntf)
+{
+	unsigned long n_size = ntf->size_wd_total - ntf->size_wd_gaps;
+	if (!n_size)
+	{
+		return 0;
+	}
+
+	struct wd_map** n_wd = (struct wd_map**)malloc((sizeof(void*)) * n_size);
+	if (n_wd == NULL)
+	{
+		return -1;
+	}
+
+	unsigned long i = 0;
+	unsigned long g = 0;
+	for (; i < ntf->size_wd_total; ++i)
+	{
+		if (ntf->wd[i]->w)
+		{
+			n_wd[g++] = ntf->wd[i]; 
+		}
+	}
+
+	ntf->size_wd_total = n_size;
+	ntf->size_wd_gaps = 0;
+	free(ntf->wd);
+	ntf->wd = n_wd;
+
+	return 0;
+}
+
+static void wdMapDel(Notify* ntf, unsigned long wd)
+{
+	unsigned long i = 0;
+
+	for (; i < ntf->size_wd_total; ++i)
+	{
+		if (ntf->wd[i]->wd == wd)
+		{
+			++(ntf->size_wd_gaps);
+			free(ntf->wd[i]->w);
+			ntf->wd[i]->w = NULL;
+			break;
+		}
+	}
+}
 
 static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
 {
@@ -212,6 +321,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		return -1;
 	}
 
+	//TODO: remove me ///////////////////////////////////////////
 	if (wd > ntf->size_w)
 	{
 		char** t = (char**)realloc(ntf->w, (sizeof(void*))*(wd));
@@ -244,6 +354,13 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		return -1;
 	}
 	strcpy(ntf->w[wd - 1], path);
+	////////remove me///////////////////////////////////
+
+	if (-1 == wdMap(ntf, wd, path))
+	{
+		return -1;
+	}
+printf("%d size_wd_total=%ld\n", __LINE__, ntf->size_wd_total);
 
 	char** elems = lstReadDir(path);
 	if (elems == NULL)
@@ -409,12 +526,13 @@ Notify* initNotify(char** path, const uint32_t mask)
 static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 {
 	unsigned int i = 0;
-	for (; i < ntf->size_w; ++i)
+	for (; i < ntf->size_wd_total; ++i)
 	{
 		if (ntf->w[i] == NULL)
 		{
 			continue;
 		}
+
 		if (ntf->w[i] == strstr(ntf->w[i], oldpath)
 			&& (strlen(ntf->w[i]) == strlen(oldpath)
 				|| *(ntf->w[i] + strlen(oldpath)) == '/' ))
@@ -429,7 +547,7 @@ static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 			ntf->w[i] = p;
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -486,6 +604,13 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	{	
 		if (!rd)
 		{
+			/*
+			if (-1 == wdMapVacuum(ntf))
+			{
+				return -1;
+			}
+			*/
+
 			rd = Select(ntf->fd, (timeout) ? timeout : -1);
 			if (!rd)
 			{
@@ -553,9 +678,10 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	}
 	(*path)[0]	= '\0';
 
+//printf("%d ntf->w[e->wd - 1]=%s\n", __LINE__, wdMapGet(ntf, e->wd));
+	char* path_watch = ntf->w[e->wd - 1];
 	if (e->wd > 0)
 	{
-		char* path_watch = ntf->w[e->wd - 1];
 		if (path_watch)
 		{
 			free(*path);
@@ -598,7 +724,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	if (e->mask & IN_MOVED_FROM
 		&& e->mask & IN_ISDIR)
 	{
-		if (-1 == addCookie(&ntf->cookies, ntf->w[e->wd - 1], e->name, e->cookie))
+		if (-1 == addCookie(&ntf->cookies, path_watch, e->name, e->cookie))
 		{
 			free(e);
 			return -1;
@@ -620,7 +746,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			}
 			sprintf(oldpath, "%s/%s", C->path, C->name);
 
-			char* newpath = (char*)malloc(snprintf(NULL, 0, "%s/%s", ntf->w[e->wd - 1], e->name) + 1);
+			char* newpath = (char*)malloc(snprintf(NULL, 0, "%s/%s", path_watch, e->name) + 1);
 			if (newpath == NULL)
 			{
 				free(oldpath);
@@ -628,7 +754,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 				free(e);
 				return -1;
 			}
-			sprintf(newpath, "%s/%s", ntf->w[e->wd - 1], e->name);
+			sprintf(newpath, "%s/%s", path_watch, e->name);
 
 			if (-1 == renameWatches(ntf, oldpath, newpath))
 			{
@@ -666,8 +792,9 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 
 	if (e->mask & IN_IGNORED)
 	{
-		free(ntf->w[e->wd - 1]);
-		ntf->w[e->wd - 1] = NULL;
+		wdMapDel(ntf, e->wd);
+		free(path_watch);
+		path_watch = NULL;
 	}
 
 	if (e->mask & IN_Q_OVERFLOW)
@@ -695,7 +822,7 @@ void freeNotify(Notify* ntf)
 	}
 	
 	size_t i = 0;
-	for (i = 0; i < ntf->size_w; i++)
+	for (i = 0; i < ntf->size_wd_total; i++)
 	{
 		if (ntf->w[i] != NULL)
 		{
