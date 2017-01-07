@@ -57,6 +57,7 @@ struct _rnotify
 
 static int wdMap(Notify* ntf, unsigned long wd, const char* path)
 {
+	printf("%d total=%ld\n", __LINE__, ntf->size_wd_total);
 	struct wd_map** t = (struct wd_map**)realloc(ntf->wd, (sizeof(void*)) * (ntf->size_wd_total + 1));
 	if (t == NULL)
 	{
@@ -526,7 +527,7 @@ Notify* initNotify(char** path, const uint32_t mask)
 static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 {
 	unsigned int i = 0;
-	for (; i < ntf->size_wd_total; ++i)
+	for (; i < ntf->size_w; ++i)
 	{
 		if (ntf->w[i] == NULL)
 		{
@@ -792,7 +793,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 
 	if (e->mask & IN_IGNORED)
 	{
-		wdMapDel(ntf, e->wd);
+		//wdMapDel(ntf, e->wd);
 		free(path_watch);
 		path_watch = NULL;
 	}
@@ -822,7 +823,7 @@ void freeNotify(Notify* ntf)
 	}
 	
 	size_t i = 0;
-	for (i = 0; i < ntf->size_wd_total; i++)
+	for (i = 0; i < ntf->size_w; i++)
 	{
 		if (ntf->w[i] != NULL)
 		{
