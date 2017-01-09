@@ -545,9 +545,12 @@ static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 			}
 			sprintf(p, "%s%s", newpath, ntf->w[i] + strlen(oldpath));
 			free(ntf->w[i]);
+printf("%d i=%d\n", __LINE__, i);
 			ntf->w[i] = p;
+printf("%d p=%s\n", __LINE__, p);
 		}
 	}
+printf("%d i=%d\n", __LINE__, i);
 
 	return 0;
 }
@@ -777,9 +780,13 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			}
 			*/
 
+printf("%d !\n", __LINE__);
 			free(oldpath);
+printf("%d !\n", __LINE__);
 			free(newpath);
+printf("%d !\n", __LINE__);
 			freeCookie(C);
+printf("%d !\n", __LINE__);
 		}
 		else
 		{
