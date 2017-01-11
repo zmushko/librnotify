@@ -29,10 +29,10 @@ struct Cookie
         struct Cookie* next;
 };
 
-struct wd_map
+struct wd_path
 {
 	unsigned long wd;
-	char* w;
+	char* path;
 };
 
 struct _rnotify 
@@ -44,7 +44,7 @@ struct _rnotify
 	/////
         unsigned long size_wd_total;
         unsigned long size_wd_gaps;
-        struct wd_map** wd;
+        struct wd_path** map;
         long max_name;
         unsigned long max_queued_events;
         uint32_t mask;
@@ -55,16 +55,16 @@ struct _rnotify
 
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
 
-static int wdMap(Notify* ntf, unsigned long wd, const char* path)
+static int mapAdd(Notify* ntf, unsigned long wd, const char* path)
 {
-	printf("%d total=%ld\n", __LINE__, ntf->size_wd_total);
-	struct wd_map** t = (struct wd_map**)realloc(ntf->wd, (sizeof(void*)) * (ntf->size_wd_total + 1));
+	//printf("%d total=%ld\n", __LINE__, ntf->size_wd_total);
+	struct wd_path** t = (struct wd_path**)realloc(ntf->map, (sizeof(void*)) * (ntf->size_wd_total + 1));
 	if (t == NULL)
 	{
 		return -1;
 	}
 
-	struct wd_map* w = (struct wd_map*)malloc(sizeof(struct wd_map));
+	struct wd_path* w = (struct wd_path*)malloc(sizeof(struct wd_path));
 	if (w == NULL)
 	{
 		free(t);
@@ -80,26 +80,26 @@ static int wdMap(Notify* ntf, unsigned long wd, const char* path)
 	}
 	strcpy(p, path);
 
-	ntf->wd = t;
-	ntf->wd[ntf->size_wd_total] = w;
-	ntf->wd[ntf->size_wd_total]->w = p;
-	ntf->wd[ntf->size_wd_total]->wd = wd;
+	ntf->map = t;
+	ntf->map[ntf->size_wd_total] = w;
+	ntf->map[ntf->size_wd_total]->path = p;
+	ntf->map[ntf->size_wd_total]->wd = wd;
 
 	++(ntf->size_wd_total);
 
 	return 0;
 }
 
-static char* wdMapGet(Notify* ntf, unsigned long wd)
+static char* mapGet(Notify* ntf, unsigned long wd)
 {
 	char* rval = NULL;
 
 	unsigned long i = 0;
 	for (; i < ntf->size_wd_total; ++i)
 	{
-		if (ntf->wd[i]->wd == wd)
+		if (ntf->map[i]->wd == wd)
 		{
-			rval = ntf->wd[i]->w;
+			rval = ntf->map[i]->path;
 			break;
 		}
 	}
@@ -107,7 +107,7 @@ static char* wdMapGet(Notify* ntf, unsigned long wd)
 	return rval;
 }
 
-static int wdMapVacuum(Notify* ntf)
+static int mapVacuum(Notify* ntf)
 {
 	unsigned long n_size = ntf->size_wd_total - ntf->size_wd_gaps;
 	if (!n_size)
@@ -115,7 +115,7 @@ static int wdMapVacuum(Notify* ntf)
 		return 0;
 	}
 
-	struct wd_map** n_wd = (struct wd_map**)malloc((sizeof(void*)) * n_size);
+	struct wd_path** n_wd = (struct wd_path**)malloc((sizeof(void*)) * n_size);
 	if (n_wd == NULL)
 	{
 		return -1;
@@ -125,31 +125,31 @@ static int wdMapVacuum(Notify* ntf)
 	unsigned long g = 0;
 	for (; i < ntf->size_wd_total; ++i)
 	{
-		if (ntf->wd[i]->w)
+		if (ntf->map[i]->path)
 		{
-			n_wd[g++] = ntf->wd[i]; 
+			n_wd[g++] = ntf->map[i]; 
 		}
 	}
 
 	ntf->size_wd_total = n_size;
 	ntf->size_wd_gaps = 0;
-	free(ntf->wd);
-	ntf->wd = n_wd;
+	free(ntf->map);
+	ntf->map = n_wd;
 
 	return 0;
 }
 
-static void wdMapDel(Notify* ntf, unsigned long wd)
+static void mapDel(Notify* ntf, unsigned long wd)
 {
 	unsigned long i = 0;
 
 	for (; i < ntf->size_wd_total; ++i)
 	{
-		if (ntf->wd[i]->wd == wd)
+		if (ntf->map[i]->wd == wd)
 		{
 			++(ntf->size_wd_gaps);
-			free(ntf->wd[i]->w);
-			ntf->wd[i]->w = NULL;
+			free(ntf->map[i]->path);
+			ntf->map[i]->path = NULL;
 			break;
 		}
 	}
@@ -357,10 +357,10 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	strcpy(ntf->w[wd - 1], path);
 	////////remove me///////////////////////////////////
 
-	if (-1 == wdMap(ntf, wd, path))
-	{
-		return -1;
-	}
+	//if (-1 == mapAdd(ntf, wd, path))
+	//{
+	//	return -1;
+	//}
 printf("%d size_wd_total=%ld\n", __LINE__, ntf->size_wd_total);
 
 	char** elems = lstReadDir(path);
@@ -609,7 +609,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		if (!rd)
 		{
 			/*
-			if (-1 == wdMapVacuum(ntf))
+			if (-1 == mapVacuum(ntf))
 			{
 				return -1;
 			}
@@ -682,7 +682,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	}
 	(*path)[0]	= '\0';
 
-//printf("%d ntf->w[e->wd - 1]=%s\n", __LINE__, wdMapGet(ntf, e->wd));
+//printf("%d ntf->w[e->wd - 1]=%s\n", __LINE__, mapGet(ntf, e->wd));
 	char* path_watch = ntf->w[e->wd - 1];
 	if (e->wd > 0)
 	{
@@ -800,7 +800,7 @@ printf("%d !\n", __LINE__);
 
 	if (e->mask & IN_IGNORED)
 	{
-		//wdMapDel(ntf, e->wd);
+		//mapDel(ntf, e->wd);
 		free(path_watch);
 		path_watch = NULL;
 	}
