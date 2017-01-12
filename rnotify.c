@@ -29,12 +29,6 @@ struct Cookie
         struct Cookie* next;
 };
 
-struct wd_path
-{
-	unsigned long wd;
-	char* path;
-};
-
 struct _rnotify 
 {
         int fd;

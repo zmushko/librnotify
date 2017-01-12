@@ -114,11 +114,13 @@ int main(int argc, char* argv[])
 			printf("path=0\n");
 			exit(-1);
 		}
+		/*
 		if (strstr(path, "000000"))
 		{
 			free(path);
 			break;
 		}
+		*/
 		free(path);
 	}
 	
