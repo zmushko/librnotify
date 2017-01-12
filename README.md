@@ -1,1 +1,1 @@
-Librnotify v1.0.1 -
+Librnotify v2.0.0 -
