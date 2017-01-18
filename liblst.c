@@ -135,3 +135,33 @@ char** lstReadDir(const char* path)
 
 	return lst;
 }
+
+char* String(const char* format, ...)
+{
+	if(!format)
+	{
+		errno = EINVAL;
+		return NULL;
+	}
+
+	va_list ap, apt;
+	va_start(ap, format);
+	va_copy(apt, ap);
+
+	char* rval = (char*)malloc(vsnprintf(NULL, 0, format, apt) + 1);
+	if(rval == NULL)
+	{
+		va_end(ap);
+		va_end(apt);
+		errno = ENOMEM;
+		return NULL;
+	}
+	vsprintf(rval, format, ap);
+
+	va_end(ap);
+	va_end(apt);
+
+	return rval;
+}
+
+
