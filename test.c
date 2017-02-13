@@ -28,7 +28,7 @@ int main(int argc, char* argv[])
 	uint32_t mask = IN_ALL_EVENTS;
 	//uint32_t mask = IN_MODIFY | IN_CREATE | IN_DELETE | IN_DELETE_SELF | IN_MOVE_SELF | IN_MOVED_FROM | IN_MOVED_TO;
 
-	Notify* ntf = initNotify(dirs, mask/*, "^\\."*/);
+	Notify* ntf = initNotify(dirs, mask, "^\\.");
 	if (ntf == NULL)
 	{
 		exit(EXIT_FAILURE);

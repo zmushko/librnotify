@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/inotify.h>
+#include <regex.h>
 
 #include "liblst.h"
 #include "rnotify.h"
@@ -36,6 +37,7 @@ struct _rnotify
         char** w;
         long max_name;
         unsigned long max_queued_events;
+        regex_t* exclude;
         uint32_t mask;
         struct chainEvent* head;
         struct chainEvent* tail;
@@ -134,6 +136,11 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 		errno = EINVAL;
 		return -1;
 	}
+	
+	if (ntf->exclude && !regexec(ntf->exclude, e->name, 0, NULL, 0))
+ 	{
+ 		return 0;
+ 	}
 
 	size_t e_size = sizeof(struct inotify_event) + e->len;
 
@@ -329,7 +336,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	return 0;
 }
 
-Notify* initNotify(char** path, const uint32_t mask)
+Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 {
 	if (path == NULL || path[0] == NULL)
 	{
@@ -352,16 +359,43 @@ Notify* initNotify(char** path, const uint32_t mask)
 		updateMaxName(ntf, path[i]);
 	}
 
+	if (exclude)
+	{
+		regex_t* preg = (regex_t*)malloc(sizeof(regex_t));
+		if (preg == NULL)
+		{
+			free(ntf);
+			return NULL;
+		}
+		memset(preg, 0, sizeof(regex_t));
+		if (0 != regcomp(preg, exclude, REG_EXTENDED))
+		{
+			free(ntf);
+			free(preg);
+			return NULL;
+		}
+		ntf->exclude = preg;
+	}
+	
 	unsigned long max_queued_events = 0;
 	FILE* f = fopen(PATH_MAX_QUEUED_EVENTS, "r");
 	if (f == NULL)
 	{
+		if (ntf->exclude)
+		{
+			regfree(ntf->exclude);
+		}		
 		free(ntf);
 		return NULL;
 	}
 
 	if (1 != fscanf(f, "%10lu", &max_queued_events))
 	{
+		if (ntf->exclude)
+		{
+			regfree(ntf->exclude);
+		}
+
 		if (fclose(f))
 		{
 			errno = 0;
@@ -381,16 +415,27 @@ Notify* initNotify(char** path, const uint32_t mask)
 	ntf->fd	= inotify_init();
 	if (-1 == ntf->fd)
 	{
+		if (ntf->exclude)
+		{
+			regfree(ntf->exclude);
+		}
+				
 		free(ntf);
 		return NULL;
 	}
 
+	int success = 0;
 	for (i = 0; path[i]; ++i)
 	{
 		if (!access(path[i], F_OK))
 		{
 			if (-1 == addNotify(ntf, path[i], 0))
 			{
+				if (ntf->exclude)
+				{
+					regfree(ntf->exclude);
+				}
+						
 				if (close(ntf->fd))
 				{
 					errno = 0;
@@ -398,7 +443,15 @@ Notify* initNotify(char** path, const uint32_t mask)
 				free(ntf);
 				return NULL;
 			}
+			success++;
 		}
+	}
+
+	if (!success)
+	{
+		errno = ENOENT;
+		free(ntf);
+		return NULL;
 	}
 
 	return ntf;
@@ -712,6 +765,11 @@ void freeNotify(Notify* ntf)
 	
 	close(ntf->fd);
 
+	if (ntf->exclude)
+	{
+		regfree(ntf->exclude);
+	}
+			
 	free(ntf->w);
 	free(ntf);	
 	errno = safe_errno;
