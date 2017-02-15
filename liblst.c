@@ -97,8 +97,14 @@ char** lstReadDir(const char* path)
 		return NULL;
 	}
 
-	size_t dirent_sz	= offsetof(struct dirent, d_name) + pathconf(path, _PC_NAME_MAX);
-	struct dirent* entry	= (struct dirent*)malloc(dirent_sz + 1);
+	long name_max = pathconf(path, _PC_NAME_MAX);
+	if (-1 == name_max)
+	{
+		name_max = 255;
+	}
+	
+	size_t dirent_sz = offsetof(struct dirent, d_name) + name_max;
+	struct dirent* entry = (struct dirent*)malloc(dirent_sz + 1);
 	if (entry == NULL)
 	{
 		closedir(dp);
@@ -115,7 +121,7 @@ char** lstReadDir(const char* path)
 			break;
 		}
 
-                if (!strcmp(entry->d_name, ".")
+		if (!strcmp(entry->d_name, ".")
 			|| !strcmp(entry->d_name, ".."))
 		{
                         continue;
@@ -138,7 +144,7 @@ char** lstReadDir(const char* path)
 
 char* String(const char* format, ...)
 {
-	if(!format)
+	if(format == NULL)
 	{
 		errno = EINVAL;
 		return NULL;
