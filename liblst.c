@@ -142,7 +142,7 @@ char** lstReadDir(const char* path)
 	return lst;
 }
 
-char* String(const char* format, ...)
+char* lstString(const char* format, ...)
 {
 	if(format == NULL)
 	{

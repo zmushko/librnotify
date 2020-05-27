@@ -22,7 +22,7 @@ extern "C" {
 ssize_t lstPush(char*** lst, const char* str);
 void	lstFree(char** lst);
 char**	lstReadDir(const char* path);
-char*	String(const char* format, ...);
+char*	lstString(const char* format, ...);
 
 #ifdef __cplusplus
 
