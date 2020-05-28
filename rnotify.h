@@ -15,7 +15,7 @@ extern "C" {
 #endif
 	Notify*	initNotify(char** path, const uint32_t mask, const char* exclude);
 	int	waitNotify(Notify* ntf, char** const path, uint32_t* mask, const int timeout, uint32_t* cookie);
-	void	freeNotify(Notify* ntf);
+	void freeNotify(Notify* ntf);
 #ifdef __cplusplus
    }
 #endif
