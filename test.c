@@ -12,7 +12,7 @@ int main(int argc, char* argv[])
 {
 	if (argc != 2)
 	{
-		printf("Usage: a.out <dir>\n");
+		printf("Usage: %s <dir>\n", argv[0]);
 		exit(1);
 	}
 

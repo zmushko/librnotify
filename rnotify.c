@@ -268,7 +268,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		sprintf(path_elem, "%s/%s", path, elems[i]);
 		
 		struct stat sb;
-		int is_dir = (!stat(path, &sb) && S_ISDIR(sb.st_mode)) ? 1 : 0;
+        int is_dir = (!stat(path_elem, &sb) && S_ISDIR(sb.st_mode)) ? 1 : 0;
 		
 		int event_size = sizeof(struct inotify_event);
 		struct inotify_event* e = (struct inotify_event*)malloc(event_size + strlen(elems[i]) + 1);
