@@ -66,8 +66,8 @@ static int addCookie(struct Cookie** p, const char* path, const char* name, uint
 	new_p->name = (char*)malloc(strlen(name) + 1);
 	if (new_p->name == NULL)
 	{
-		free(new_p);
 		free(new_p->path);
+		free(new_p);
 		return -1;
 	}
 	strcpy(new_p->name, name);
