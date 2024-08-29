@@ -114,9 +114,8 @@ char** lstReadDir(const char* path)
 	char** lst = NULL;
 	for (;;)
 	{
-		struct dirent* result = NULL;
-		if (0 != readdir_r(dp, entry, &result)
-			|| result == NULL)
+		struct dirent* result = readdir(dp);
+		if (result == NULL)
 		{
 			break;
 		}
