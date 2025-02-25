@@ -222,6 +222,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		char** t = (char**)realloc(ntf->w, (sizeof(void*))*(wd));
 		if (t == NULL)
 		{
+			ntf->w = NULL;
 			return -1;
 		}
 		ntf->w = t;
@@ -231,11 +232,6 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 			ntf->w[i] = NULL;
 		}
 		ntf->size_w = wd;
-	}
-
-	if (ntf->w == NULL)
-	{
-		return -1;
 	}
 
 	if (ntf->w[wd - 1] != NULL)
@@ -650,6 +646,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	{
 		if (-1 == addNotify(ntf, *path, 0))
 		{
+			free(*path);
 			free(e);
 			return -1;
 		}
