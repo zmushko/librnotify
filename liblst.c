@@ -17,6 +17,15 @@
 #include <ctype.h>
 #include <limits.h>
 
+/**
+ * @brief Adds a string to the end of a string list
+ *
+ * @param lst Pointer to a string list (array of strings)
+ * @param str String to be added to the list
+ *
+ * @return On success, returns the new size of the list after push operation
+ *         On failure, returns a negative value
+ */
 ssize_t lstPush(char*** lst, const char* str)
 {
 	if (lst == NULL
@@ -67,6 +76,17 @@ ssize_t lstPush(char*** lst, const char* str)
 	return i;
 }
 
+/**
+ * @brief Frees memory allocated for a list of strings
+ *
+ * This function deallocates memory used by a list of strings.
+ * It assumes the list was allocated dynamically and terminates with a NULL entry.
+ *
+ * @param lst Pointer to an array of strings (char*) to be freed
+ *
+ * @note The function expects the list to be NULL-terminated or
+ *       to have been created by a corresponding list allocation function.
+ */
 void lstFree(char** lst)
 {
 	if (lst == NULL)
@@ -83,6 +103,18 @@ void lstFree(char** lst)
 	free(lst);
 }
 
+/**
+ * @brief Reads the contents of a directory and returns them as an array of strings.
+ * 
+ * This function scans the specified directory and returns all entries found.
+ * 
+ * @param path The path to the directory to read
+ * @return A null-terminated array of strings (char**) containing the directory entries.
+ *         Each string in the array must be freed by the caller.
+ *         Returns NULL if the directory couldn't be opened or if memory allocation fails.
+ * 
+ * @note The caller is responsible for freeing the returned array and all strings it contains.
+ */
 char** lstReadDir(const char* path)
 {
 	if (path == NULL)
@@ -141,6 +173,26 @@ char** lstReadDir(const char* path)
 	return lst;
 }
 
+/**
+ * @brief Creates a formatted string similar to printf.
+ *
+ * This function creates a new string by formatting the input according to
+ * the specified format string and variable arguments, similar to printf.
+ *
+ * @param format A printf-style format string.
+ * @param ... Variable arguments to be formatted according to the format string.
+ *
+ * @return A dynamically allocated string containing the formatted output.
+ *         The caller is responsible for freeing this memory when no longer needed.
+ *
+ * @note The returned string is allocated on the heap and must be freed by the caller
+ *       to avoid memory leaks.
+ *
+ * @example
+ * char* greeting = lstString("Hello, %s! You are %d years old.", name, age);
+ * // use greeting
+ * free(greeting);  // Don't forget to free when done
+ */
 char* lstString(const char* format, ...)
 {
 	if(format == NULL)
