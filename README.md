@@ -120,4 +120,5 @@ See LICENSE.md file for details.
 
 ## Author
 
-Maintained by Volodymyr Mushko (https://github.com/zmushko)
+Maintained by Andrey Zmushko (https://github.com/zmushko)
+Email: andrey.zmushko@gmail.com
