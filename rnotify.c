@@ -14,6 +14,16 @@
 #include "liblst.h"
 #include "rnotify.h"
 
+/**
+ * @struct chainEvent
+ * @brief A structure representing an event in the notification chain.
+ * 
+ * This structure is used to manage and track events within the notification
+ * system. It likely contains information about event types, callback functions,
+ * and any associated data needed for processing notifications.
+ * 
+ * @note See individual struct members for more detailed information.
+ */
 struct chainEvent
 {
         struct chainEvent* prev;
@@ -21,6 +31,14 @@ struct chainEvent
         struct chainEvent* next;
 };
 
+/**
+ * @struct Cookie
+ * @brief Structure representing a notification cookie
+ *
+ * This structure stores identification and state information for a notification.
+ * It serves as a handle that can be used to reference a specific notification
+ * instance for operations such as updating or closing.
+ */
 struct Cookie 
 {
         struct Cookie* prev;
@@ -30,6 +48,16 @@ struct Cookie
         struct Cookie* next;
 };
 
+/**
+ * @brief Internal structure for handling notification operations
+ *
+ * The _rnotify structure manages the state and operations for 
+ * notification handling in the rnotify library. This structure
+ * serves as the core data container for notification processing.
+ *
+ * @note This is an internal structure and should not be directly
+ * accessed by applications. Use the public API functions instead.
+ */
 struct _rnotify 
 {
         int fd;
@@ -44,8 +72,32 @@ struct _rnotify
         struct Cookie* cookies;
 };
 
+/**
+ * @brief Path to the system file controlling inotify's maximum event queue size
+ *
+ * This macro defines the path to the Linux system configuration file that
+ * specifies the maximum number of events that can be queued by the inotify
+ * subsystem. This limit affects how many events can be buffered before they
+ * are read by an application using inotify.
+ *
+ * The value in this file can be adjusted to prevent event loss in applications
+ * that generate or monitor a large number of filesystem events.
+ */
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
 
+/**
+ * @brief Adds a cookie to a cookie collection
+ *
+ * This function adds a new cookie with the specified path, name, and cookie value
+ * to the cookie collection pointed to by p.
+ *
+ * @param p Pointer to the cookie collection where the new cookie will be added
+ * @param path Path associated with the cookie
+ * @param name Name of the cookie
+ * @param cookie Unsigned 32-bit cookie value
+ *
+ * @return Status code indicating success (0) or failure (non-zero)
+ */
 static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
 {
 	struct Cookie* new_p = (struct Cookie*)malloc(sizeof(struct Cookie));
@@ -95,6 +147,16 @@ static int addCookie(struct Cookie** p, const char* path, const char* name, uint
 	return 0;
 }
 
+/**
+ * @brief Retrieve a Cookie structure from a linked list by its cookie value
+ *
+ * Searches through the linked list starting at *head to find a Cookie
+ * structure with the matching cookie value.
+ *
+ * @param head Pointer to the head of the Cookie linked list
+ * @param cookie The cookie value to search for
+ * @return Pointer to the matching Cookie structure if found, NULL otherwise
+ */
 static struct Cookie* getCookie(struct Cookie** head, uint32_t cookie)
 {
 	struct Cookie* c = *head;
@@ -122,6 +184,14 @@ static struct Cookie* getCookie(struct Cookie** head, uint32_t cookie)
 	return NULL;
 }
 
+/**
+ * @brief Frees resources associated with a Cookie structure.
+ *
+ * This function deallocates memory and cleans up any resources
+ * that were allocated for the given Cookie structure.
+ *
+ * @param p Pointer to the Cookie structure to be freed.
+ */
 static void freeCookie(struct Cookie* p)
 {
 	free(p->name);
@@ -129,6 +199,18 @@ static void freeCookie(struct Cookie* p)
 	free(p);
 }
 
+/**
+ * @brief Pushes an inotify event to the notification chain
+ *
+ * This function adds a received inotify event to the processing chain in the notification
+ * system. It handles the event according to its type and maintains the internal state
+ * of the notification object.
+ *
+ * @param ntf Pointer to the Notify structure that maintains notification state
+ * @param e Pointer to the inotify_event structure containing the event details
+ * 
+ * @return Integer status code: 0 for success, negative value for error
+ */
 static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 {
 	if (ntf == NULL || e == NULL)
@@ -175,6 +257,18 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 	return 0;
 }
 
+/**
+ * @brief Pulls and retrieves the next inotify event from the notification chain
+ *
+ * This function extracts the next available inotify event from the internal
+ * event chain of the given notification object. If no events are available,
+ * it may return NULL or block depending on the configuration of the notifier.
+ *
+ * @param ntf Pointer to the Notify structure that holds the event chain
+ * @return Pointer to an inotify_event structure, or NULL if no events are available
+ * @note The returned event memory may be managed internally by the Notify structure
+ *       and should not be freed by the caller.
+ */
 static struct inotify_event* pullChainEvent(Notify* ntf)
 {
 	if (ntf->head == NULL)
@@ -195,6 +289,16 @@ static struct inotify_event* pullChainEvent(Notify* ntf)
 	return event;
 }
 
+/**
+ * @brief Updates the maximum name length in the notification structure
+ *
+ * This function examines the given path and updates the internal maximum
+ * name length tracking in the notification structure if the current path
+ * has a longer name component than previously recorded.
+ *
+ * @param ntf Pointer to the notification structure to update
+ * @param path The path string to evaluate
+ */
 static void updateMaxName(Notify* ntf, char* path)
 {
 	if (!access(path, F_OK))
@@ -204,6 +308,15 @@ static void updateMaxName(Notify* ntf, char* path)
 	}
 }
 
+/**
+ * @brief Adds a new path to be monitored for notifications
+ *
+ * @param ntf Pointer to the notification structure
+ * @param path The filesystem path to be monitored
+ * @param cookie Identifier for the notification
+ *
+ * @return 0 on success, or a negative error code on failure
+ */
 static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 {
 	errno = 0;
@@ -217,7 +330,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		return -1;
 	}
 
-	if (wd > ntf->size_w)
+	if (wd > (int)ntf->size_w)
 	{
 		char** t = (char**)realloc(ntf->w, (sizeof(void*))*(wd));
 		if (t == NULL)
@@ -227,7 +340,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		}
 		ntf->w = t;
 		size_t i = 0;
-		for (i = ntf->size_w; i < wd; i++)
+		for (i = ntf->size_w; i < (size_t)wd; i++)
 		{
 			ntf->w[i] = NULL;
 		}
@@ -332,6 +445,18 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	return 0;
 }
 
+/**
+ * @brief Initializes a new notification monitor
+ *
+ * Creates and initializes a notification monitor that watches the specified paths
+ * for file system events that match the given event mask, excluding paths that
+ * match the exclude pattern.
+ *
+ * @param path Array of paths to monitor for changes (NULL-terminated)
+ * @param mask Bit mask specifying the events to monitor (e.g., IN_CREATE, IN_DELETE, etc.)
+ * @param exclude Regex pattern for paths to exclude from monitoring (NULL for no exclusion)
+ * @return Pointer to a newly allocated Notify structure, or NULL on failure
+ */
 Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 {
 	if (path == NULL || path[0] == NULL)
@@ -453,6 +578,18 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 	return ntf;
 }
 
+/**
+ * @brief Updates file system watches after a rename operation
+ *
+ * This function updates the notification system's internal watches when a watched
+ * file or directory is renamed from oldpath to newpath.
+ *
+ * @param ntf Pointer to the notification system structure
+ * @param oldpath The previous path of the watched file/directory
+ * @param newpath The new path of the watched file/directory
+ *
+ * @return 0 on success, or a negative error code on failure
+ */
 static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 {
 	unsigned int i = 0;
@@ -480,17 +617,30 @@ static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 	return 0;
 }
 
+/**
+ * @brief Reads a total of specified bytes from a file descriptor into a buffer
+ *
+ * This function attempts to read exactly 'len' bytes from the given file descriptor
+ * into the buffer. It may perform multiple read operations to handle partial reads
+ * until the requested amount is fully read or an error occurs.
+ *
+ * @param fd The file descriptor to read from
+ * @param buf Pointer to the buffer pointer where data will be stored
+ * @param len The number of bytes to read
+ *
+ * @return The total number of bytes read, or -1 if an error occurred
+ */
 static ssize_t totalRead(int fd, char** buf, size_t len)
 {
-	ssize_t total	= 0;
+	ssize_t total_read	= 0;
 	ssize_t done	= 0;
 
-	while (len > total)
+	while ((ssize_t)len > total_read)
 	{
-		done = read(fd, *buf + total, len - total);
+		done = read(fd, *buf + total_read, len - total_read);
 		if (done > 0)
 		{
-			total += (size_t)done;
+			total_read += (size_t)done;
 		}
 		else if (0 == done)
 		{
@@ -500,15 +650,24 @@ static ssize_t totalRead(int fd, char** buf, size_t len)
 		{
 			if (errno != EINTR && errno != EAGAIN)
 			{
-				total = -1;
+				total_read = -1;
 				break;
 			}
 		}
 	}
 
-	return total;
+	return total_read;
 }
 
+/**
+ * @brief Validates if a file descriptor is valid/open
+ *
+ * Checks whether the provided file descriptor is a valid file descriptor
+ * that can be used for I/O operations.
+ * 
+ * @param fd The file descriptor to check
+ * @return int Returns 0 if the file descriptor is valid, negative value otherwise
+ */
 static int checkFd(int fd)
 {
 	fd_set set;
@@ -518,6 +677,19 @@ static int checkFd(int fd)
 	return select(fd + 1, &set, NULL, NULL, &t);
 }
 
+/**
+ * @brief Performs a select operation on a file descriptor with a timeout
+ *
+ * This function monitors the given file descriptor to check if it's ready
+ * for reading, with a specified timeout period.
+ *
+ * @param fd      The file descriptor to monitor
+ * @param timeout The maximum time to wait in milliseconds, or -1 for infinite wait
+ *
+ * @return Returns positive value if the descriptor is ready,
+ *         0 if the timeout expired,
+ *         or -1 if an error occurred
+ */
 static int Select(int fd, int timeout)
 {
 	fd_set set;
@@ -527,6 +699,21 @@ static int Select(int fd, int timeout)
 	return select(fd + 1, &set, NULL, NULL, (timeout > 0) ? &t : NULL);
 }
 
+/**
+ * @brief Waits for a notification event to occur.
+ *
+ * This function blocks until a notification event occurs, a timeout is reached,
+ * or an error happens. When an event occurs, information about the event is
+ * returned through the pointer parameters.
+ *
+ * @param ntf The notification context to wait on.
+ * @param path Pointer to receive the path string related to the event.
+ * @param mask Pointer to receive the event type mask.
+ * @param timeout Maximum time to wait in milliseconds. Use -1 for infinite wait.
+ * @param cookie Pointer to receive the cookie value for related events.
+ *
+ * @return 0 on success, negative value on error or timeout.
+ */
 int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint32_t* cookie)
 {
 	if (ntf == NULL
@@ -575,7 +762,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		memset(buffer, 0, length);
 
 		ssize_t total_read = totalRead(ntf->fd, &buffer, length);
-		if (length != total_read)
+		if ((ssize_t)length != total_read)
 		{
 			int rval = -1;
 			if (errno == EINVAL)
@@ -736,6 +923,15 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	return 0;
 }
 
+/**
+ * @brief Frees resources associated with a Notify object
+ *
+ * This function deallocates memory and resources that were allocated for the
+ * given Notify structure. After calling this function, the pointer should not
+ * be used anymore as it becomes invalid.
+ *
+ * @param ntf Pointer to the Notify structure to be freed
+ */
 void freeNotify(Notify* ntf)
 {
 	if (ntf == NULL)
