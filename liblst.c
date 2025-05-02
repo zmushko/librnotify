@@ -129,31 +129,25 @@ char** lstReadDir(const char* path)
 		return NULL;
 	}
 
-	long name_max = pathconf(path, _PC_NAME_MAX);
-	if (-1 == name_max)
-	{
-		name_max = 255;
-	}
-	
-	size_t dirent_sz = offsetof(struct dirent, d_name) + name_max;
-	struct dirent* entry = (struct dirent*)malloc(dirent_sz + 1);
-	if (entry == NULL)
-	{
-		closedir(dp);
-		return NULL;
-	}
-
 	char** lst = NULL;
 	for (;;)
 	{
+		errno = 0;
 		struct dirent* result = readdir(dp);
 		if (result == NULL)
 		{
+			if (errno != 0)
+			{
+				perror("Error reading directory");
+				lstFree(lst);
+				closedir(dp);
+				return NULL;
+			}
 			break;
 		}
 
-		if (!strcmp(entry->d_name, ".")
-			|| !strcmp(entry->d_name, ".."))
+		if (!strcmp(result->d_name, ".")
+			|| !strcmp(result->d_name, ".."))
 		{
                         continue;
 		}
@@ -161,13 +155,11 @@ char** lstReadDir(const char* path)
 		if (-1 == lstPush(&lst, result->d_name))
 		{
 			lstFree(lst);
-			free(entry);
 			closedir(dp);
 			return NULL;
 		}
 	}
 
-	free(entry);
 	closedir(dp);
 
 	return lst;
