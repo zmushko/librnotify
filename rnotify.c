@@ -472,43 +472,41 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 /*
  * Public API.
  *
- * Initialise a Notify monitoring `path` (NULL-terminated array of
- * absolute paths). `mask` is the inotify event mask to install on
- * every watch; IN_DONT_FOLLOW is added unconditionally. `exclude`,
- * if non-NULL, is compiled as POSIX extended regex and any event
- * whose `name` field matches is dropped before it reaches the chain.
+ * Initialise a Notify watching `path`. `mask` is the inotify event
+ * mask installed on every watch in the tree; IN_DONT_FOLLOW is added
+ * unconditionally. `exclude`, if non-NULL, is compiled as POSIX
+ * extended regex; events whose `name` matches are dropped before they
+ * reach the chain.
  *
- * Each path is descended recursively: existing entries are surfaced
+ * The path is descended recursively: existing entries are surfaced
  * as synthetic IN_CREATE events (and IN_CLOSE_WRITE for regular
  * files) so the caller never has to do an initial scan separately.
  *
+ * To watch multiple roots, create one Notify per root and integrate
+ * notifyFd() into the caller's own select()/epoll() loop.
+ *
  * Returns a Notify* on success. Returns NULL with errno set on
- * failure: EINVAL for a NULL/empty path array, ENOENT when none of
- * the supplied paths existed at install time, or any errno from
- * inotify_init/inotify_add_watch/malloc.
+ * failure: EINVAL for a NULL path; ENOENT when the path does not
+ * exist at install time; or any errno from inotify_init,
+ * inotify_add_watch, regcomp, or malloc.
  */
-Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
+Notify* initNotify(const char* path, const uint32_t mask, const char* exclude)
 {
-    if (path == NULL || path[0] == NULL)
+    if (path == NULL)
     {
         errno = EINVAL;
         return NULL;
     }
 
-    size_t i = 0;
-    size_t size = sizeof(Notify);
-    Notify* ntf = (Notify*)malloc(size);
+    Notify* ntf = (Notify*)malloc(sizeof(Notify));
     if (ntf == NULL)
     {
         return NULL;
     }
-    memset(ntf, 0, size);
+    memset(ntf, 0, sizeof(Notify));
     ntf->mask = mask;
 
-    for (i = 0; path[i]; ++i)
-    {
-        updateMaxName(ntf, path[i]);
-    }
+    updateMaxName(ntf, (char*)path);
 
     if (exclude)
     {
@@ -521,8 +519,9 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
         memset(preg, 0, sizeof(regex_t));
         if (0 != regcomp(preg, exclude, REG_EXTENDED))
         {
-            free(ntf);
             free(preg);
+            free(ntf);
+            errno = EINVAL;
             return NULL;
         }
         ntf->exclude = preg;
@@ -535,6 +534,7 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
         if (ntf->exclude)
         {
             regfree(ntf->exclude);
+            free(ntf->exclude);
         }
         free(ntf);
         return NULL;
@@ -542,26 +542,19 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 
     if (1 != fscanf(f, "%10lu", &max_queued_events))
     {
+        int saved_errno = errno ? errno : EIO;
+        fclose(f);
         if (ntf->exclude)
         {
             regfree(ntf->exclude);
+            free(ntf->exclude);
         }
-
-        if (fclose(f))
-        {
-            errno = 0;
-        }
-
         free(ntf);
+        errno = saved_errno;
         return NULL;
     }
-
     ntf->max_queued_events = max_queued_events;
-
-    if (fclose(f))
-    {
-        errno = 0;
-    }
+    fclose(f);
 
     ntf->fd = inotify_init();
     if (-1 == ntf->fd)
@@ -569,45 +562,66 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
         if (ntf->exclude)
         {
             regfree(ntf->exclude);
+            free(ntf->exclude);
         }
-
         free(ntf);
         return NULL;
     }
 
-    int installed = 0;
-    for (i = 0; path[i]; ++i)
+    int rc = addNotify(ntf, path, 0);
+    if (rc < 0)
     {
-        int rc = addNotify(ntf, path[i], 0);
-        if (rc == -1)
-        {
-            if (ntf->exclude)
-            {
-                regfree(ntf->exclude);
-            }
-            close(ntf->fd);
-            free(ntf);
-            return NULL;
-        }
-        if (rc > 0)
-        {
-            installed++;
-        }
-    }
-
-    if (installed == 0)
-    {
+        int saved_errno = errno;
+        close(ntf->fd);
         if (ntf->exclude)
         {
             regfree(ntf->exclude);
+            free(ntf->exclude);
         }
+        free(ntf->w);
+        free(ntf);
+        errno = saved_errno;
+        return NULL;
+    }
+    if (rc == 0)
+    {
+        /* addNotify swallowed ENOENT as a no-op; for a single-path
+         * init that means the caller asked us to watch a path that
+         * does not exist. Surface it instead of returning a Notify
+         * that will block on waitNotify forever. */
         close(ntf->fd);
+        if (ntf->exclude)
+        {
+            regfree(ntf->exclude);
+            free(ntf->exclude);
+        }
+        free(ntf->w);
         free(ntf);
         errno = ENOENT;
         return NULL;
     }
 
     return ntf;
+}
+
+/*
+ * Public API.
+ *
+ * Expose the underlying inotify file descriptor so the caller can
+ * integrate it into their own select()/poll()/epoll() loop. The fd
+ * is owned by the Notify and stays valid until freeNotify; do not
+ * close it or read from it directly — always go through waitNotify.
+ *
+ * Returns the fd on success; returns -1 with EINVAL on NULL input.
+ */
+int notifyFd(const Notify* ntf)
+{
+    if (ntf == NULL)
+    {
+        errno = EINVAL;
+        return -1;
+    }
+    return ntf->fd;
 }
 
 /*
@@ -1058,6 +1072,7 @@ void freeNotify(Notify* ntf)
     if (ntf->exclude)
     {
         regfree(ntf->exclude);
+        free(ntf->exclude);
     }
 
     free(ntf->w);
