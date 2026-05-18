@@ -40,10 +40,11 @@ struct chainEvent
  * It serves as a handle that can be used to reference a specific notification
  * instance for operations such as updating or closing.
  */
-struct Cookie 
+struct Cookie
 {
         struct Cookie* prev;
         uint32_t cookie;
+        int wd;            /* watch descriptor that emitted IN_MOVED_FROM */
         char* path;
         char* name;
         struct Cookie* next;
@@ -99,7 +100,7 @@ struct _rnotify
  *
  * @return Status code indicating success (0) or failure (non-zero)
  */
-static int addCookie(struct Cookie** p, const char* path, const char* name, uint32_t cookie)
+static int addCookie(struct Cookie** p, int wd, const char* path, const char* name, uint32_t cookie)
 {
 	struct Cookie* new_p = (struct Cookie*)malloc(sizeof(struct Cookie));
 	if (new_p == NULL)
@@ -107,6 +108,7 @@ static int addCookie(struct Cookie** p, const char* path, const char* name, uint
 		return -1;
 	}
 	memset(new_p, 0, sizeof(struct Cookie));
+	new_p->wd = wd;
 
 	new_p->path = lstString("%s", path);
 	if (new_p->path == NULL)
@@ -193,6 +195,39 @@ static void freeCookie(struct Cookie* p)
 	free(p->name);
 	free(p->path);
 	free(p);
+}
+
+/*
+ * Drop every pending cookie that came from a given watch descriptor.
+ * Called when IN_IGNORED retires that wd: any matching IN_MOVED_TO
+ * is now impossible, and leaving the cookies around would let a
+ * later wd-recycle collide with a stale entry (kernel reuses wd
+ * numbers via IDR after inotify_rm_watch).
+ */
+static void dropCookiesForWd(struct Cookie** head, int wd)
+{
+	struct Cookie* c = *head;
+	while (c != NULL)
+	{
+		struct Cookie* next = c->next;
+		if (c->wd == wd)
+		{
+			if (c->prev)
+			{
+				c->prev->next = c->next;
+			}
+			else
+			{
+				*head = c->next;
+			}
+			if (c->next)
+			{
+				c->next->prev = c->prev;
+			}
+			freeCookie(c);
+		}
+		c = next;
+	}
 }
 
 /**
@@ -908,7 +943,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		&& e->mask & IN_ISDIR)
 	{
 		if (path_watch
-			&& -1 == addCookie(&ntf->cookies, path_watch, e->name, e->cookie))
+			&& -1 == addCookie(&ntf->cookies, e->wd, path_watch, e->name, e->cookie))
 		{
 			free(e);
 			return -1;
@@ -978,6 +1013,11 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 
 	if (e->mask & IN_IGNORED && path_watch)
 	{
+		/* Drop any pending cookies tied to this wd before the kernel
+		 * recycles it (IDR may hand the same wd back on the next
+		 * inotify_add_watch). A stale cookie surviving recycle could
+		 * collide on cookie value and produce a phantom rename match. */
+		dropCookiesForWd(&ntf->cookies, e->wd);
 		free(ntf->w[e->wd - 1]);
 		ntf->w[e->wd - 1] = NULL;
 	}
