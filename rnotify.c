@@ -769,13 +769,23 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			return -1;
 		}
 
+		if (length == 0)
+		{
+			/* Spurious wake-up: select() reported readable but the
+			 * queue is empty by the time we look. Avoid malloc(0)
+			 * (implementation-defined: may return NULL and be mistaken
+			 * for an allocation failure) and go back to waiting.
+			 */
+			continue;
+		}
+
 		int event_size = sizeof(struct inotify_event);
 		if (length > (ntf->max_queued_events * (event_size + ntf->max_name + 1)))
 		{
 			errno = EMSGSIZE;
 			return -1;
 		}
-		
+
 		char* buffer = (char*)malloc(length);
 		if (buffer == NULL)
 		{
