@@ -108,22 +108,20 @@ static int addCookie(struct Cookie** p, const char* path, const char* name, uint
 	}
 	memset(new_p, 0, sizeof(struct Cookie));
 
-	new_p->path = (char*)malloc(strlen(path) + 1);
+	new_p->path = lstString("%s", path);
 	if (new_p->path == NULL)
 	{
 		free(new_p);
 		return -1;
 	}
-	strcpy(new_p->path, path);
 
-	new_p->name = (char*)malloc(strlen(name) + 1);
+	new_p->name = lstString("%s", name);
 	if (new_p->name == NULL)
 	{
 		free(new_p->path);
 		free(new_p);
 		return -1;
 	}
-	strcpy(new_p->name, name);
 
 	new_p->cookie = cookie;
 
@@ -375,12 +373,11 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		free(ntf->w[wd - 1]);
 	}
 
-	ntf->w[wd - 1] = (char*)malloc(strlen(path) + 1);
+	ntf->w[wd - 1] = lstString("%s", path);
 	if (ntf->w[wd - 1] == NULL)
 	{
 		return -1;
 	}
-	strcpy(ntf->w[wd - 1], path);
 
 	char** elems = lstReadDir(path);
 	if (elems == NULL)
@@ -390,17 +387,17 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		return 1;
 	}
 
+	const size_t event_size = sizeof(struct inotify_event);
 	size_t i = 0;
 	while (elems[i])
 	{
-		char* path_elem = (char*)malloc(strlen(path) + strlen(elems[i]) + 2);
+		char* path_elem = lstString("%s/%s", path, elems[i]);
 		if (path_elem == NULL)
 		{
 			lstFree(elems);
 			return -1;
 		}
-		sprintf(path_elem, "%s/%s", path, elems[i]);
-		
+
 		struct stat sb;
 		/* lstat — never dereference a symlink here. A symlink-to-dir
 		 * must not be reported as IN_ISDIR or the recursive descent
@@ -408,9 +405,9 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		 * refuses to install the watch, but emitting IN_ISDIR for a
 		 * symlink is still semantically wrong). */
 		int is_dir = (!lstat(path_elem, &sb) && S_ISDIR(sb.st_mode)) ? 1 : 0;
-		
-		int event_size = sizeof(struct inotify_event);
-		struct inotify_event* e = (struct inotify_event*)malloc(event_size + strlen(elems[i]) + 1);
+
+		size_t name_size = strlen(elems[i]) + 1;
+		struct inotify_event* e = (struct inotify_event*)malloc(event_size + name_size);
 		if (e == NULL)
 		{
 			free(path_elem);
@@ -429,9 +426,9 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		{
 			e->mask = IN_CREATE;
 		}
-		e->len = strlen(elems[i]) + 1;
+		e->len = name_size;
 		e->cookie = cookie;
-		strcpy(e->name, elems[i]);
+		memcpy(e->name, elems[i], name_size);
 		if (-1 == pushChainEvent(ntf, e))
 		{
 			free(e);
@@ -443,7 +440,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 
 		if (!is_dir)
 		{
-			e = (struct inotify_event*)malloc(event_size + strlen(elems[i]) + 1);
+			e = (struct inotify_event*)malloc(event_size + name_size);
 			if (e == NULL)
 			{
 				free(path_elem);
@@ -451,12 +448,12 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 				return -1;
 			}
 			memset(e, 0, event_size);
-			
+
 			e->wd = wd;
 			e->mask = IN_CLOSE_WRITE;
-			e->len = strlen(elems[i]) + 1;
-			strcpy(e->name, elems[i]);
-			
+			e->len = name_size;
+			memcpy(e->name, elems[i], name_size);
+
 			if (-1 == pushChainEvent(ntf, e))
 			{
 				free(e);
@@ -635,12 +632,11 @@ static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 			&& (strlen(ntf->w[i]) == strlen(oldpath)
 				|| *(ntf->w[i] + strlen(oldpath)) == '/' ))
 		{
-			char* p = (char*)malloc(snprintf(NULL, 0, "%s%s", newpath, ntf->w[i] + strlen(oldpath)) + 1);
+			char* p = lstString("%s%s", newpath, ntf->w[i] + strlen(oldpath));
 			if (p == NULL)
 			{
 				return -1;
 			}
-			sprintf(p, "%s%s", newpath, ntf->w[i] + strlen(oldpath));
 			free(ntf->w[i]);
 			ntf->w[i] = p;
 		}
@@ -884,25 +880,15 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	char* path_watch = watchPath(ntf, e->wd);
 	if (path_watch)
 	{
+		char* built = e->len
+			? lstString("%s/%s", path_watch, e->name)
+			: lstString("%s", path_watch);
+		if (built == NULL)
+		{
+			return -1;
+		}
 		free(*path);
-		if (e->len)
-		{
-			*path = (char*)malloc(strlen(path_watch) + strlen(e->name) + 2);
-			if (*path == NULL)
-			{
-				return -1;
-			}
-			sprintf(*path, "%s/%s", path_watch, e->name);
-		}
-		else
-		{
-			*path = (char*)malloc(strlen(path_watch) + 1);
-			if (*path == NULL)
-			{
-				return -1;
-			}
-			strcpy(*path, path_watch);
-		}
+		*path = built;
 	}
 
 	if (mask)
@@ -938,16 +924,15 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		struct Cookie* C = getCookie(&ntf->cookies, e->cookie);
 		if (C && path_watch)
 		{
-			char* oldpath = (char*)malloc(snprintf(NULL, 0, "%s/%s", C->path, C->name) + 1);
+			char* oldpath = lstString("%s/%s", C->path, C->name);
 			if (oldpath == NULL)
 			{
 				freeCookie(C);
 				free(e);
 				return -1;
 			}
-			sprintf(oldpath, "%s/%s", C->path, C->name);
 
-			char* newpath = (char*)malloc(snprintf(NULL, 0, "%s/%s", path_watch, e->name) + 1);
+			char* newpath = lstString("%s/%s", path_watch, e->name);
 			if (newpath == NULL)
 			{
 				free(oldpath);
@@ -955,7 +940,6 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 				free(e);
 				return -1;
 			}
-			sprintf(newpath, "%s/%s", path_watch, e->name);
 
 			if (-1 == renameWatches(ntf, oldpath, newpath))
 			{

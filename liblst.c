@@ -55,12 +55,13 @@ ssize_t lstPush(char*** lst, const char* str)
 		}
 	}
 
-	(*lst)[i] = (char*)malloc(strlen(str) + 1);
+	size_t str_size = strlen(str) + 1;
+	(*lst)[i] = (char*)malloc(str_size);
 	if ((*lst)[i] == NULL)
 	{
 		return -1;
 	}
-	strcpy((*lst)[i], str);
+	memcpy((*lst)[i], str, str_size);
 
 	char** t = (char**)realloc(*lst, len_ptr*(i + 2));
 	if (t == NULL)
@@ -197,18 +198,25 @@ char* lstString(const char* format, ...)
 	va_start(ap, format);
 	va_copy(apt, ap);
 
-	char* rval = (char*)malloc(vsnprintf(NULL, 0, format, apt) + 1);
+	int needed = vsnprintf(NULL, 0, format, apt);
+	va_end(apt);
+	if (needed < 0)
+	{
+		va_end(ap);
+		return NULL;
+	}
+
+	size_t size = (size_t)needed + 1;
+	char* rval = (char*)malloc(size);
 	if(rval == NULL)
 	{
 		va_end(ap);
-		va_end(apt);
 		errno = ENOMEM;
 		return NULL;
 	}
-	vsprintf(rval, format, ap);
+	vsnprintf(rval, size, format, ap);
 
 	va_end(ap);
-	va_end(apt);
 
 	return rval;
 }
