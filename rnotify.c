@@ -945,7 +945,10 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	{
 	}
 
-	*cookie = e->cookie;
+	if (cookie)
+	{
+		*cookie = e->cookie;
+	}
 	free(e);
 
 	return 0;
