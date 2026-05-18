@@ -823,16 +823,34 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			return rval;
 		}
 		
+		/*
+		 * Walk packed inotify events. Two invariants keep the
+		 * pointer-cast read of e->len safe:
+		 *  - malloc(3) returns memory aligned to alignof(max_align_t),
+		 *    which is >= alignof(struct inotify_event) (== 4) on every
+		 *    Linux ABI;
+		 *  - the kernel rounds e->len up so successive events stay
+		 *    aligned to alignof(struct inotify_event); see
+		 *    fs/notify/inotify/inotify_user.c in the kernel tree.
+		 * Bound-check anyway in case the read came back truncated or
+		 * the event header was corrupted in flight.
+		 */
 		size_t i = 0;
-		while (i < length)
+		while (i + (size_t)event_size <= length)
 		{
 			e = (struct inotify_event*)&buffer[i];
+			if (e->len > length - i - (size_t)event_size)
+			{
+				errno = EPROTO;
+				free(buffer);
+				return -1;
+			}
 			if (-1 == pushChainEvent(ntf, e))
 			{
 				free(buffer);
 				return -1;
 			}
-			i += event_size + e->len;
+			i += (size_t)event_size + e->len;
 		}
 		free(buffer);
 	}
