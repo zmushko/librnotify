@@ -402,7 +402,12 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		sprintf(path_elem, "%s/%s", path, elems[i]);
 		
 		struct stat sb;
-        int is_dir = (!stat(path_elem, &sb) && S_ISDIR(sb.st_mode)) ? 1 : 0;
+		/* lstat — never dereference a symlink here. A symlink-to-dir
+		 * must not be reported as IN_ISDIR or the recursive descent
+		 * would follow it (IN_DONT_FOLLOW on inotify_add_watch already
+		 * refuses to install the watch, but emitting IN_ISDIR for a
+		 * symlink is still semantically wrong). */
+		int is_dir = (!lstat(path_elem, &sb) && S_ISDIR(sb.st_mode)) ? 1 : 0;
 		
 		int event_size = sizeof(struct inotify_event);
 		struct inotify_event* e = (struct inotify_event*)malloc(event_size + strlen(elems[i]) + 1);
