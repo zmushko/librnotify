@@ -29,7 +29,7 @@ PC       = $(LIBNAME).pc
 HEADERS  = rnotify.h
 OBJS     = rnotify.o liblst.o
 
-.PHONY: all clean install uninstall test sanitize
+.PHONY: all clean install uninstall test sanitize check
 
 all: $(LINK_SO) $(STATIC) $(PC)
 
@@ -65,6 +65,15 @@ $(PC): $(PC).in
 test: test.c $(STATIC)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ test.c $(STATIC)
 
+# Build the test reporter and run every shell-driven stress test under tests/.
+# Non-Linux platforms (no inotify) will fail at compile time — `check` is
+# intended for the Linux CI/dev environment.
+tests/reporter: tests/reporter.c $(STATIC) rnotify.h
+	$(CC) $(CFLAGS) $(LDFLAGS) -I. -o $@ tests/reporter.c $(STATIC)
+
+check: tests/reporter
+	@cd tests && ./run_all.sh
+
 install: all
 	$(INSTALL) -d $(DESTDIR)$(INCLUDEDIR)
 	$(INSTALL) -m 0644 $(HEADERS) $(DESTDIR)$(INCLUDEDIR)/
@@ -88,4 +97,4 @@ clean:
 	rm -f $(OBJS)
 	rm -f $(REAL_SO) $(SONAME) $(LINK_SO)
 	rm -f $(STATIC) $(PC)
-	rm -f test
+	rm -f test tests/reporter

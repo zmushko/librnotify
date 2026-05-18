@@ -5,3 +5,4 @@
 *.so.*
 librnotify.pc
 test
+tests/reporter

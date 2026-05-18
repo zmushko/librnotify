@@ -36,6 +36,25 @@ sudo make PREFIX=/usr install
 symlinks), a static archive (`librnotify.a`), and a `pkg-config` file
 (`librnotify.pc`).
 
+### Running the test suite
+
+```bash
+make check
+```
+
+builds a small event reporter and runs every shell script in `tests/`
+against it (race-free recursive watching, atomic-save cookie pairing,
+symlink no-follow, recursive directory move). The suite requires a
+Linux host with inotify.
+
+```bash
+make sanitize
+```
+
+rebuilds everything with AddressSanitizer + UndefinedBehaviorSanitizer
+and links the `test` binary against the instrumented archive — useful
+when investigating failures surfaced by `make check`.
+
 ## Usage
 
 ### Basic Example
