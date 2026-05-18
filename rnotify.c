@@ -725,6 +725,11 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		return -1;
 	}
 
+	if (mask)
+	{
+		*mask = 0;
+	}
+
 	int rd = 0;
 	struct inotify_event* e = NULL;
 	while ( 0 < (rd = checkFd(ntf->fd)) || NULL == (e = pullChainEvent(ntf)))
@@ -769,11 +774,14 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			int rval = -1;
 			if (errno == EINVAL)
 			{
-				*mask |= IN_Q_OVERFLOW;
+				if (mask)
+				{
+					*mask = IN_Q_OVERFLOW;
+				}
 				rval = 0;
 			}
 
-			free(buffer);	
+			free(buffer);
 			return rval;
 		}
 		
