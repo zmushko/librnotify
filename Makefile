@@ -2,7 +2,12 @@ CC      ?= gcc
 AR      ?= ar
 INSTALL ?= install
 
-CFLAGS  += -g -Wall -pedantic -std=gnu11 -D_FILE_OFFSET_BITS=64
+WARN_CFLAGS = -Wall -Wextra -Wshadow -pedantic
+ifneq ($(WARN_AS_ERROR),)
+WARN_CFLAGS += -Werror
+endif
+
+CFLAGS  += -g $(WARN_CFLAGS) -std=gnu11 -D_FILE_OFFSET_BITS=64
 
 PREFIX       ?= /usr/local
 LIBDIR       ?= $(PREFIX)/lib
@@ -24,15 +29,22 @@ PC       = $(LIBNAME).pc
 HEADERS  = rnotify.h
 OBJS     = rnotify.o liblst.o
 
-.PHONY: all clean install uninstall test
+.PHONY: all clean install uninstall test sanitize
 
 all: $(LINK_SO) $(STATIC) $(PC)
+
+# Rebuild with AddressSanitizer + UndefinedBehaviorSanitizer and link
+# the test binary against the instrumented archive. Use for local
+# development and CI; the artefacts are not suitable for distribution.
+sanitize: CFLAGS  += -fsanitize=address,undefined -fno-omit-frame-pointer -g3
+sanitize: LDFLAGS += -fsanitize=address,undefined
+sanitize: clean all test
 
 %.o: %.c
 	$(CC) $(CFLAGS) -fPIC -c $< -o $@
 
 $(REAL_SO): $(OBJS)
-	$(CC) -shared -Wl,-soname,$(SONAME) -o $@ $^
+	$(CC) -shared -Wl,-soname,$(SONAME) $(LDFLAGS) -o $@ $^
 
 $(SONAME): $(REAL_SO)
 	ln -sf $(REAL_SO) $@
@@ -51,7 +63,7 @@ $(PC): $(PC).in
 	    $< > $@
 
 test: test.c $(STATIC)
-	$(CC) $(CFLAGS) -o $@ test.c $(STATIC)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ test.c $(STATIC)
 
 install: all
 	$(INSTALL) -d $(DESTDIR)$(INCLUDEDIR)
