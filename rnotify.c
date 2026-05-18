@@ -15,19 +15,14 @@
 #include "liblst.h"
 #include "rnotify.h"
 
-/**
- * @struct chainEvent
- * @brief A structure representing an event in the notification chain.
- * 
- * This structure is used to manage and track events within the notification
- * system. It likely contains information about event types, callback functions,
- * and any associated data needed for processing notifications.
- * 
- * @note See individual struct members for more detailed information.
+/*
+ * FIFO node holding one already-decoded inotify_event. The queue is
+ * singly linked: ntf->head is the next event to be pulled (oldest),
+ * ntf->tail is where new events are appended (newest), and `next`
+ * always points further from head toward tail.
  */
 struct chainEvent
 {
-        struct chainEvent* prev;
         struct inotify_event* e;
         struct chainEvent* next;
 };
@@ -230,17 +225,15 @@ static void dropCookiesForWd(struct Cookie** head, int wd)
 	}
 }
 
-/**
- * @brief Pushes an inotify event to the notification chain
+/*
+ * Append a deep-copy of `e` to the tail of the event FIFO. Returns 0
+ * on success, 0 (silently) when the event's name matches the configured
+ * exclude regex, and -1 on allocation failure (errno set).
  *
- * This function adds a received inotify event to the processing chain in the notification
- * system. It handles the event according to its type and maintains the internal state
- * of the notification object.
- *
- * @param ntf Pointer to the Notify structure that maintains notification state
- * @param e Pointer to the inotify_event structure containing the event details
- * 
- * @return Integer status code: 0 for success, negative value for error
+ * Ownership: a successful push transfers a freshly malloc'd copy of `e`
+ * into the queue; the caller still owns and frees `e` itself. The
+ * eventual pullChainEvent returns that internal copy and the caller of
+ * pull becomes responsible for freeing it.
  */
 static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 {
@@ -249,11 +242,11 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 		errno = EINVAL;
 		return -1;
 	}
-	
+
 	if (ntf->exclude && !regexec(ntf->exclude, e->name, 0, NULL, 0))
- 	{
- 		return 0;
- 	}
+	{
+		return 0;
+	}
 
 	size_t e_size = sizeof(struct inotify_event) + e->len;
 
@@ -270,35 +263,26 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 		free(event);
 		return -1;
 	}
-	element->e	= event;
-	element->next	= ntf->tail;
-	element->prev	= NULL;
-	
+	element->e = event;
+	element->next = NULL;
+
 	if (ntf->tail != NULL)
 	{
-		ntf->tail->prev = element;
+		ntf->tail->next = element;
 	}
-	ntf->tail = element;
-	
-	if (ntf->head == NULL)
+	else
 	{
 		ntf->head = element;
 	}
+	ntf->tail = element;
 
 	return 0;
 }
 
-/**
- * @brief Pulls and retrieves the next inotify event from the notification chain
- *
- * This function extracts the next available inotify event from the internal
- * event chain of the given notification object. If no events are available,
- * it may return NULL or block depending on the configuration of the notifier.
- *
- * @param ntf Pointer to the Notify structure that holds the event chain
- * @return Pointer to an inotify_event structure, or NULL if no events are available
- * @note The returned event memory may be managed internally by the Notify structure
- *       and should not be freed by the caller.
+/*
+ * Remove and return the oldest pending inotify_event, or NULL if the
+ * queue is empty. The returned pointer is owned by the caller and
+ * must be freed once consumed.
  */
 static struct inotify_event* pullChainEvent(Notify* ntf)
 {
@@ -307,15 +291,14 @@ static struct inotify_event* pullChainEvent(Notify* ntf)
 		return NULL;
 	}
 
-	struct inotify_event* event = ntf->head->e;
-	struct chainEvent* prev = ntf->head->prev;
-	free(ntf->head);
-	ntf->head = prev;	
-	
-	if (prev == NULL)
+	struct chainEvent* element = ntf->head;
+	struct inotify_event* event = element->e;
+	ntf->head = element->next;
+	if (ntf->head == NULL)
 	{
 		ntf->tail = NULL;
 	}
+	free(element);
 
 	return event;
 }
