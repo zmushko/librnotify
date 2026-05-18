@@ -125,24 +125,21 @@ static int addCookie(struct Cookie** p, const char* path, const char* name, uint
 
 	new_p->cookie = cookie;
 
+	/* Head insertion: typical workload pairs IN_MOVED_FROM with the
+	 * immediately-following IN_MOVED_TO, so most lookups hit the head
+	 * after one step. Orphan cookies (FROM with no matching TO — move
+	 * out of watched scope, or a buffer overflow) accumulate towards
+	 * the tail and live until freeNotify; on a stable watch set this
+	 * is a few entries at most, but a hostile workload could pile up
+	 * arbitrarily many. */
 	new_p->prev = NULL;
-	new_p->next = NULL;
-
-	if (*p == NULL)
+	new_p->next = *p;
+	if (*p != NULL)
 	{
-		*p = new_p;
-		return 0;
+		(*p)->prev = new_p;
 	}
+	*p = new_p;
 
-	struct Cookie* c = *p;
-	while (c->next)
-	{
-		c = c->next;
-	}
-
-	c->next = new_p;
-	new_p->prev = c;
-	
 	return 0;
 }
 
@@ -1020,7 +1017,16 @@ void freeNotify(Notify* ntf)
 	{
 		free(e);
 	}
-	
+
+	struct Cookie* c = ntf->cookies;
+	while (c != NULL)
+	{
+		struct Cookie* next = c->next;
+		freeCookie(c);
+		c = next;
+	}
+	ntf->cookies = NULL;
+
 	unsigned long i = 0;
 	for (i = 0; i < ntf->size_w; i++)
 	{
