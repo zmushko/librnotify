@@ -2,7 +2,7 @@ CC      ?= gcc
 AR      ?= ar
 INSTALL ?= install
 
-CFLAGS  += -g -Wall -pedantic -std=gnu99 -D_FILE_OFFSET_BITS=64
+CFLAGS  += -g -Wall -pedantic -std=gnu11 -D_FILE_OFFSET_BITS=64
 
 PREFIX       ?= /usr/local
 LIBDIR       ?= $(PREFIX)/lib
