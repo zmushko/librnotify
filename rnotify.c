@@ -310,13 +310,15 @@ static void updateMaxName(Notify* ntf, char* path)
 }
 
 /**
- * @brief Adds a new path to be monitored for notifications
+ * Install an inotify watch on `path` and synthesise IN_CREATE events
+ * for entries already present in the directory (so the caller never
+ * misses files that appeared between mkdir(2) and our watch).
  *
- * @param ntf Pointer to the notification structure
- * @param path The filesystem path to be monitored
- * @param cookie Identifier for the notification
- *
- * @return 0 on success, or a negative error code on failure
+ * Returns:
+ *    1 — watch installed.
+ *    0 — path no longer exists (ENOENT from inotify_add_watch); a
+ *        benign no-op so callers can ignore racing deletions.
+ *   -1 — error (errno set).
  */
 static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 {
@@ -383,7 +385,9 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	char** elems = lstReadDir(path);
 	if (elems == NULL)
 	{
-		return 0;
+		/* watch is in place; we just couldn't enumerate existing
+		 * entries (path is a regular file, or permission denied) */
+		return 1;
 	}
 
 	size_t i = 0;
@@ -463,7 +467,7 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 
 	lstFree(elems);
 
-	return 0;
+	return 1;
 }
 
 /**
@@ -566,33 +570,35 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 		return NULL;
 	}
 
-	int success = 0;
+	int installed = 0;
 	for (i = 0; path[i]; ++i)
 	{
-		if (!access(path[i], F_OK))
+		int rc = addNotify(ntf, path[i], 0);
+		if (rc == -1)
 		{
-			if (-1 == addNotify(ntf, path[i], 0))
+			if (ntf->exclude)
 			{
-				if (ntf->exclude)
-				{
-					regfree(ntf->exclude);
-				}
-						
-				if (close(ntf->fd))
-				{
-					errno = 0;
-				}
-				free(ntf);
-				return NULL;
+				regfree(ntf->exclude);
 			}
-			success++;
+			close(ntf->fd);
+			free(ntf);
+			return NULL;
+		}
+		if (rc > 0)
+		{
+			installed++;
 		}
 	}
 
-	if (!success)
+	if (installed == 0)
 	{
-		errno = ENOENT;
+		if (ntf->exclude)
+		{
+			regfree(ntf->exclude);
+		}
+		close(ntf->fd);
 		free(ntf);
+		errno = ENOENT;
 		return NULL;
 	}
 
