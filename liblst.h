@@ -6,10 +6,10 @@
  *  Author: Andrey Zmushko
  */
 
-#ifndef __LIBLST_H
-#define __LIBLST_H
+#ifndef LIBRNOTIFY_LIBLST_H_
+#define LIBRNOTIFY_LIBLST_H_
 
-// #define _GNU_SOURCE // 
+// #define _GNU_SOURCE //
 
 #include <stdlib.h> // size_t definition
 

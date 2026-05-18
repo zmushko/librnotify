@@ -1,4 +1,4 @@
-# librnotify v2.0.0
+# librnotify v3.0.0
 
 A C library for efficient recursive directory monitoring using Linux's inotify API.
 
@@ -16,8 +16,10 @@ A C library for efficient recursive directory monitoring using Linux's inotify A
 ### Prerequisites
 
 - Linux system with inotify support
-- GCC or compatible compiler
-- libcurl and json-c libraries
+- C11-capable compiler (GCC ≥ 4.6 or Clang ≥ 3.3)
+- GNU make
+
+No third-party libraries are required; the library only links libc.
 
 ### Building the Library
 
@@ -25,7 +27,33 @@ A C library for efficient recursive directory monitoring using Linux's inotify A
 git clone https://github.com/zmushko/librnotify.git
 cd librnotify
 make
+sudo make install                  # installs under /usr/local by default
+# Override the layout if needed:
+sudo make PREFIX=/usr install
 ```
+
+`make` produces a shared library (`librnotify.so` plus the SONAME-versioned
+symlinks), a static archive (`librnotify.a`), and a `pkg-config` file
+(`librnotify.pc`).
+
+### Running the test suite
+
+```bash
+make check
+```
+
+builds a small event reporter and runs every shell script in `tests/`
+against it (race-free recursive watching, atomic-save cookie pairing,
+symlink no-follow, recursive directory move). The suite requires a
+Linux host with inotify.
+
+```bash
+make sanitize
+```
+
+rebuilds everything with AddressSanitizer + UndefinedBehaviorSanitizer
+and links the `test` binary against the instrumented archive — useful
+when investigating failures surfaced by `make check`.
 
 ## Usage
 
@@ -37,28 +65,29 @@ make
 #include "rnotify.h"
 
 int main(int argc, char** argv) {
-    // Paths to watch (NULL-terminated array)
-    char* paths[] = {"/path/to/watch", NULL};
-    
-    // Initialize notification system
-    // IN_ALL_EVENTS can be replaced with specific events like IN_CREATE|IN_MODIFY
-    Notify* ntf = initNotify(paths, IN_ALL_EVENTS, NULL);
+    // Watch a single directory tree.
+    // IN_ALL_EVENTS can be replaced with specific bits, e.g. IN_CREATE|IN_MODIFY.
+    Notify* ntf = initNotify("/path/to/watch", IN_ALL_EVENTS, NULL);
     if (!ntf) {
         perror("Failed to initialize notification system");
         return 1;
     }
-    
-    // Event loop
-    char* path = NULL;
-    uint32_t mask = 0;
-    uint32_t cookie = 0;
-    
-    while (0 == waitNotify(ntf, &path, &mask, -1, &cookie)) {
+
+    // Event loop. To watch additional roots, create more Notify
+    // instances and select() over notifyFd() of each.
+    for (;;) {
+        char*    path   = NULL;
+        uint32_t mask   = 0;
+        uint32_t cookie = 0;
+        int rc = waitNotify(ntf, &path, &mask, -1, &cookie);
+        if (rc != 0) {
+            // -1 = error (errno set); positive value = timeout fired.
+            break;
+        }
         printf("Event: %s (mask: %08x, cookie: %u)\n", path, mask, cookie);
         free(path); // Important: free the path after use!
     }
-    
-    // Cleanup
+
     freeNotify(ntf);
     return 0;
 }
@@ -66,20 +95,45 @@ int main(int argc, char** argv) {
 
 ### Compile Your Program
 
+After `make install`, link against the system-installed library:
+
 ```bash
-gcc -o my_program my_program.c -L/path/to/librnotify -lrnotify -lcurl -ljson-c
+gcc -o my_program my_program.c $(pkg-config --cflags --libs librnotify)
+```
+
+Or, when linking against a local in-tree build:
+
+```bash
+gcc -o my_program my_program.c -I/path/to/librnotify -L/path/to/librnotify -lrnotify
 ```
 
 ## API Reference
 
-### `Notify* initNotify(char** path, const uint32_t mask, const char* exclude)`
+### `Notify* initNotify(const char* path, const uint32_t mask, const char* exclude)`
 
-Initializes the notification system.
+Initializes a notification monitor on a single directory tree.
 
-- **path**: NULL-terminated array of paths to monitor
-- **mask**: Bit mask of events to monitor (see inotify constants)
-- **exclude**: Regex pattern to exclude certain files/directories (NULL for no exclusion)
-- **returns**: Notify pointer on success, NULL on failure
+- **path**: absolute path to monitor (recursive descent is automatic)
+- **mask**: bit mask of events to monitor (see inotify constants).
+  `IN_DONT_FOLLOW` is added unconditionally — symlinks are never
+  dereferenced.
+- **exclude**: POSIX extended regex; events whose `name` matches are
+  dropped before reaching the consumer (NULL for no exclusion)
+- **returns**: `Notify*` on success, `NULL` with `errno` set on
+  failure (`EINVAL` for NULL path, `ENOENT` if the path does not
+  exist, or any errno from `inotify_init`/`inotify_add_watch`/
+  `malloc`/`regcomp`).
+
+To watch multiple roots, create one `Notify` per root and integrate
+`notifyFd()` of each into your own `select()`/`poll()`/`epoll()` loop.
+
+### `int notifyFd(const Notify* ntf)`
+
+Returns the underlying inotify file descriptor for integration with
+the caller's event loop. The fd is owned by the `Notify`; do not
+close it or read from it directly — always go through `waitNotify`.
+
+- **returns**: fd on success, `-1` with `errno = EINVAL` on NULL input.
 
 ### `int waitNotify(Notify* ntf, char** path, uint32_t* mask, const int timeout, uint32_t* cookie)`
 
