@@ -201,6 +201,18 @@ static void dropCookiesForWd(struct Cookie** head, int wd)
 }
 
 /*
+ * Release an inotify_event obtained from pullChainEvent (or constructed
+ * locally for a pushChainEvent call). Defined as a single-step wrapper
+ * around free() so the pull-event lifecycle is greppable and so the
+ * single free site is easy to extend when the event ever grows
+ * non-trivial owned data.
+ */
+static void freeChainEvent(struct inotify_event* event)
+{
+    free(event);
+}
+
+/*
  * Append a deep-copy of `e` to the tail of the event FIFO. Returns 0
  * on success, 0 (silently) when the event's name matches the configured
  * exclude regex, and -1 on allocation failure (errno set).
@@ -252,18 +264,6 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
     ntf->tail = element;
 
     return 0;
-}
-
-/*
- * Release an inotify_event obtained from pullChainEvent (or constructed
- * locally for a pushChainEvent call). Defined as a single-step wrapper
- * around free() so the pull-event lifecycle is greppable and so the
- * single free site is easy to extend when the event ever grows
- * non-trivial owned data.
- */
-static void freeChainEvent(struct inotify_event* event)
-{
-    free(event);
 }
 
 /*
