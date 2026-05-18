@@ -321,7 +321,15 @@ static void updateMaxName(Notify* ntf, char* path)
 static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 {
 	errno = 0;
-	int wd = inotify_add_watch(ntf->fd, path, ntf->mask);
+	/*
+	 * IN_DONT_FOLLOW is always set: if `path` is a symlink, watch the
+	 * link itself rather than dereferencing it. Without this flag an
+	 * attacker with write access to a watched directory could plant a
+	 * symlink and steer the recursive descent into an arbitrary path
+	 * (e.g. /etc). Coupled with the lstat() check on directory entries
+	 * elsewhere in this file, this is the no-follow guarantee.
+	 */
+	int wd = inotify_add_watch(ntf->fd, path, ntf->mask | IN_DONT_FOLLOW);
 	if (-1 == wd)
 	{
 		if (errno == ENOENT)
