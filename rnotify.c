@@ -10,6 +10,7 @@
 #include <sys/ioctl.h>
 #include <sys/inotify.h>
 #include <regex.h>
+#include <limits.h>
 
 #include "liblst.h"
 #include "rnotify.h"
@@ -332,19 +333,31 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 
 	if (wd > (int)ntf->size_w)
 	{
-		char** t = (char**)realloc(ntf->w, (sizeof(void*))*(wd));
+		unsigned int new_cap = ntf->size_w ? ntf->size_w : 16;
+		while (new_cap < (unsigned int)wd)
+		{
+			if (new_cap > UINT_MAX / 2)
+			{
+				new_cap = (unsigned int)wd;
+				break;
+			}
+			new_cap *= 2;
+		}
+
+		char** t = (char**)realloc(ntf->w, sizeof(void*) * new_cap);
 		if (t == NULL)
 		{
-			ntf->w = NULL;
+			/* realloc(3) leaves the original block intact on failure;
+			 * do not clobber ntf->w or freeNotify will dereference NULL.
+			 */
 			return -1;
 		}
 		ntf->w = t;
-		size_t i = 0;
-		for (i = ntf->size_w; i < (size_t)wd; i++)
+		for (size_t i = ntf->size_w; i < new_cap; i++)
 		{
 			ntf->w[i] = NULL;
 		}
-		ntf->size_w = wd;
+		ntf->size_w = new_cap;
 	}
 
 	if (ntf->w[wd - 1] != NULL)
