@@ -1,1 +1,7 @@
 *.bak
+*.o
+*.a
+*.so
+*.so.*
+librnotify.pc
+test

@@ -1,0 +1,10 @@
+prefix=@PREFIX@
+exec_prefix=${prefix}
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: librnotify
+Description: Recursive inotify wrapper for Linux with race-free directory creation handling
+Version: @VERSION@
+Libs: -L${libdir} -lrnotify
+Cflags: -I${includedir}
