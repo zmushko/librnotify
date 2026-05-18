@@ -701,6 +701,21 @@ static int Select(int fd, int timeout)
 	return select(fd + 1, &set, NULL, NULL, (timeout < 0) ? NULL : &t);
 }
 
+/*
+ * Resolve a watch descriptor to its stored path, or NULL if the wd is
+ * out of range or the slot has already been invalidated (e.g. by a
+ * prior IN_IGNORED). IN_Q_OVERFLOW carries wd = -1 from the kernel,
+ * which is the original reason this guard exists.
+ */
+static char* watchPath(const Notify* ntf, int wd)
+{
+	if (wd <= 0 || (unsigned int)wd > ntf->size_w)
+	{
+		return NULL;
+	}
+	return ntf->w[wd - 1];
+}
+
 /**
  * @brief Waits for a notification event to occur.
  *
@@ -806,30 +821,27 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	}
 	(*path)[0]	= '\0';
 
-	if (e->wd > 0)
+	char* path_watch = watchPath(ntf, e->wd);
+	if (path_watch)
 	{
-		char* path_watch = ntf->w[e->wd - 1];
-		if (path_watch)
+		free(*path);
+		if (e->len)
 		{
-			free(*path);
-			if (e->len)
+			*path = (char*)malloc(strlen(path_watch) + strlen(e->name) + 2);
+			if (*path == NULL)
 			{
-				*path = (char*)malloc(strlen(path_watch) + strlen(e->name) + 2);
-				if (*path == NULL)
-				{
-					return -1;
-				}
-				sprintf(*path, "%s/%s", path_watch, e->name);
+				return -1;
 			}
-			else
+			sprintf(*path, "%s/%s", path_watch, e->name);
+		}
+		else
+		{
+			*path = (char*)malloc(strlen(path_watch) + 1);
+			if (*path == NULL)
 			{
-				*path = (char*)malloc(strlen(path_watch) + 1);
-				if (*path == NULL)
-				{
-					return -1;
-				}
-				strcpy(*path, path_watch);
+				return -1;
 			}
+			strcpy(*path, path_watch);
 		}
 	}
 
@@ -852,7 +864,8 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	if (e->mask & IN_MOVED_FROM
 		&& e->mask & IN_ISDIR)
 	{
-		if (-1 == addCookie(&ntf->cookies, ntf->w[e->wd - 1], e->name, e->cookie))
+		if (path_watch
+			&& -1 == addCookie(&ntf->cookies, path_watch, e->name, e->cookie))
 		{
 			free(e);
 			return -1;
@@ -863,7 +876,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		&& e->mask & IN_ISDIR)
 	{
 		struct Cookie* C = getCookie(&ntf->cookies, e->cookie);
-		if (C)
+		if (C && path_watch)
 		{
 			char* oldpath = (char*)malloc(snprintf(NULL, 0, "%s/%s", C->path, C->name) + 1);
 			if (oldpath == NULL)
@@ -874,7 +887,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			}
 			sprintf(oldpath, "%s/%s", C->path, C->name);
 
-			char* newpath = (char*)malloc(snprintf(NULL, 0, "%s/%s", ntf->w[e->wd - 1], e->name) + 1);
+			char* newpath = (char*)malloc(snprintf(NULL, 0, "%s/%s", path_watch, e->name) + 1);
 			if (newpath == NULL)
 			{
 				free(oldpath);
@@ -882,7 +895,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 				free(e);
 				return -1;
 			}
-			sprintf(newpath, "%s/%s", ntf->w[e->wd - 1], e->name);
+			sprintf(newpath, "%s/%s", path_watch, e->name);
 
 			if (-1 == renameWatches(ntf, oldpath, newpath))
 			{
@@ -892,7 +905,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 				free(e);
 				return -1;
 			}
-			
+
 			/* DO NOT REMOVE - this is absolutely necessary */
 			if (-1 == addNotify(ntf, newpath, 0))
 			{
@@ -907,17 +920,22 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			free(newpath);
 			freeCookie(C);
 		}
+		else if (C)
+		{
+			/* cookie matched but the wd is no longer valid; drop it */
+			freeCookie(C);
+		}
 		else
 		{
 			if (-1 == addNotify(ntf, *path, 0))
 			{
 				free(e);
 				return -1;
-			}		
+			}
 		}
 	}
 
-	if (e->mask & IN_IGNORED)
+	if (e->mask & IN_IGNORED && path_watch)
 	{
 		free(ntf->w[e->wd - 1]);
 		ntf->w[e->wd - 1] = NULL;
