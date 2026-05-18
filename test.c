@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
 		char* path = NULL;
 		uint32_t mask = 0;
 		uint32_t cookie = 0;
-		if (-1 == waitNotify(ntf, &path, &mask, 0, &cookie))
+		if (-1 == waitNotify(ntf, &path, &mask, -1, &cookie))
 		{
 			if (errno == ENOSPC)
 			{

@@ -695,8 +695,10 @@ static int Select(int fd, int timeout)
 	fd_set set;
 	FD_ZERO(&set);
 	FD_SET(fd, &set);
-	struct timeval t = { 0, timeout };
-	return select(fd + 1, &set, NULL, NULL, (timeout > 0) ? &t : NULL);
+	struct timeval t;
+	t.tv_sec  = timeout / 1000;
+	t.tv_usec = (timeout % 1000) * 1000;
+	return select(fd + 1, &set, NULL, NULL, (timeout < 0) ? NULL : &t);
 }
 
 /**
