@@ -231,9 +231,9 @@ static void dropCookiesForWd(struct Cookie** head, int wd)
  * exclude regex, and -1 on allocation failure (errno set).
  *
  * Ownership: a successful push transfers a freshly malloc'd copy of `e`
- * into the queue; the caller still owns and frees `e` itself. The
- * eventual pullChainEvent returns that internal copy and the caller of
- * pull becomes responsible for freeing it.
+ * into the queue; the caller still owns and releases `e` itself
+ * (freeChainEvent). The eventual pullChainEvent returns that internal
+ * copy and the puller becomes responsible for freeChainEvent on it.
  */
 static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 {
@@ -260,7 +260,7 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 	struct chainEvent* element = (struct chainEvent*)malloc(sizeof(struct chainEvent));
 	if (element == NULL)
 	{
-		free(event);
+		freeChainEvent(event);
 		return -1;
 	}
 	element->e = event;
@@ -280,9 +280,21 @@ static int pushChainEvent(Notify* ntf, struct inotify_event* e)
 }
 
 /*
+ * Release an inotify_event obtained from pullChainEvent (or constructed
+ * locally for a pushChainEvent call). Defined as a single-step wrapper
+ * around free() so the pull-event lifecycle is greppable and so the
+ * single free site is easy to extend when the event ever grows
+ * non-trivial owned data.
+ */
+static void freeChainEvent(struct inotify_event* event)
+{
+	free(event);
+}
+
+/*
  * Remove and return the oldest pending inotify_event, or NULL if the
  * queue is empty. The returned pointer is owned by the caller and
- * must be freed once consumed.
+ * must be released with freeChainEvent() once consumed.
  */
 static struct inotify_event* pullChainEvent(Notify* ntf)
 {
@@ -446,12 +458,12 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 		memcpy(e->name, elems[i], name_size);
 		if (-1 == pushChainEvent(ntf, e))
 		{
-			free(e);
+			freeChainEvent(e);
 			free(path_elem);
 			lstFree(elems);
 			return -1;
 		}
-		free(e);
+		freeChainEvent(e);
 
 		if (!is_dir)
 		{
@@ -471,12 +483,12 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 
 			if (-1 == pushChainEvent(ntf, e))
 			{
-				free(e);
+				freeChainEvent(e);
 				free(path_elem);
 				lstFree(elems);
 				return -1;
 			}
-			free(e);
+			freeChainEvent(e);
 		}
 		free(path_elem);
 		i++;
@@ -917,7 +929,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		if (-1 == addNotify(ntf, *path, 0))
 		{
 			free(*path);
-			free(e);
+			freeChainEvent(e);
 			return -1;
 		}
 	}
@@ -928,7 +940,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		if (path_watch
 			&& -1 == addCookie(&ntf->cookies, e->wd, path_watch, e->name, e->cookie))
 		{
-			free(e);
+			freeChainEvent(e);
 			return -1;
 		}
 	}
@@ -943,7 +955,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			if (oldpath == NULL)
 			{
 				freeCookie(C);
-				free(e);
+				freeChainEvent(e);
 				return -1;
 			}
 
@@ -952,7 +964,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 			{
 				free(oldpath);
 				freeCookie(C);
-				free(e);
+				freeChainEvent(e);
 				return -1;
 			}
 
@@ -961,7 +973,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 				free(oldpath);
 				free(newpath);
 				freeCookie(C);
-				free(e);
+				freeChainEvent(e);
 				return -1;
 			}
 
@@ -971,7 +983,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 				free(oldpath);
 				free(newpath);
 				freeCookie(C);
-				free(e);
+				freeChainEvent(e);
 				return -1;
 			}
 
@@ -988,7 +1000,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 		{
 			if (-1 == addNotify(ntf, *path, 0))
 			{
-				free(e);
+				freeChainEvent(e);
 				return -1;
 			}
 		}
@@ -1013,7 +1025,7 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	{
 		*cookie = e->cookie;
 	}
-	free(e);
+	freeChainEvent(e);
 
 	return 0;
 }
@@ -1038,7 +1050,7 @@ void freeNotify(Notify* ntf)
 	struct inotify_event* e = NULL;
 	while (NULL != (e = pullChainEvent(ntf)))
 	{
-		free(e);
+		freeChainEvent(e);
 	}
 
 	struct Cookie* c = ntf->cookies;
