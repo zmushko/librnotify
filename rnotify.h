@@ -2,8 +2,8 @@
   * https://github.com/zmushko/librnotify
   * use it as you want but keep this header (if you want)
   */
-#ifndef __RNOTIFY_H
-#define __RNOTIFY_H
+#ifndef LIBRNOTIFY_RNOTIFY_H_
+#define LIBRNOTIFY_RNOTIFY_H_
 
 #include <stdint.h>
 #include <sys/inotify.h>
@@ -20,4 +20,4 @@ extern "C" {
    }
 #endif
 
-#endif // __RNOTIFY_H
+#endif // LIBRNOTIFY_RNOTIFY_H_
