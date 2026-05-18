@@ -23,39 +23,42 @@
  */
 struct chainEvent
 {
-        struct inotify_event* e;
-        struct chainEvent* next;
+    struct inotify_event* e;
+    struct chainEvent* next;
 };
 
-/**
- * @struct Cookie
- * @brief Structure representing a notification cookie
- *
- * This structure stores identification and state information for a notification.
- * It serves as a handle that can be used to reference a specific notification
- * instance for operations such as updating or closing.
+/*
+ * One pending IN_MOVED_FROM. Kept in a doubly-linked list so we can
+ * delete by wd (dropCookiesForWd) without re-walking from head. The
+ * matching IN_MOVED_TO is located by `cookie` value.
  */
 struct Cookie
 {
-        struct Cookie* prev;
-        uint32_t cookie;
-        int wd;            /* watch descriptor that emitted IN_MOVED_FROM */
-        char* path;
-        char* name;
-        struct Cookie* next;
+	struct Cookie* prev;
+	uint32_t cookie;
+	int wd;            /* watch descriptor that emitted IN_MOVED_FROM */
+	char* path;        /* directory containing the moved entry */
+	char* name;        /* the entry's name within that directory */
+	struct Cookie* next;
 };
 
-/**
- * @brief Internal structure for handling notification operations
- *
- * The _rnotify structure manages the state and operations for 
- * notification handling in the rnotify library. This structure
- * serves as the core data container for notification processing.
- *
- * @note This is an internal structure and should not be directly
- * accessed by applications. Use the public API functions instead.
+/*
+ * Internal Notify state. Opaque to consumers — they hold it through
+ * the public Notify typedef.
+ *   fd                : inotify fd from inotify_init().
+ *   w / size_w        : sparse path table indexed by wd-1. size_w is
+ *                       capacity; entries are NULL for unused slots.
+ *                       See watchPath() and addNotify().
+ *   max_name          : pathconf(_PC_NAME_MAX), updated on watch add.
+ *   max_queued_events : snapshot of /proc/sys/fs/inotify/max_queued_events
+ *                       read at init time; used to sanity-check FIONREAD.
+ *   exclude           : optional compiled regex; entries whose name
+ *                       matches are filtered out of the chain.
+ *   mask              : event mask to install on every watch.
+ *   head / tail       : FIFO queue of decoded inotify_event copies.
+ *   cookies           : pending IN_MOVED_FROM entries awaiting their TO.
  */
-struct _rnotify 
+struct _rnotify
 {
         int fd;
         unsigned int size_w;
@@ -69,31 +72,13 @@ struct _rnotify
         struct Cookie* cookies;
 };
 
-/**
- * @brief Path to the system file controlling inotify's maximum event queue size
- *
- * This macro defines the path to the Linux system configuration file that
- * specifies the maximum number of events that can be queued by the inotify
- * subsystem. This limit affects how many events can be buffered before they
- * are read by an application using inotify.
- *
- * The value in this file can be adjusted to prevent event loss in applications
- * that generate or monitor a large number of filesystem events.
- */
 #define PATH_MAX_QUEUED_EVENTS	"/proc/sys/fs/inotify/max_queued_events"
 
-/**
- * @brief Adds a cookie to a cookie collection
+/*
+ * Prepend a new pending cookie. See addCookie's body for the head
+ * insertion rationale.
  *
- * This function adds a new cookie with the specified path, name, and cookie value
- * to the cookie collection pointed to by p.
- *
- * @param p Pointer to the cookie collection where the new cookie will be added
- * @param path Path associated with the cookie
- * @param name Name of the cookie
- * @param cookie Unsigned 32-bit cookie value
- *
- * @return Status code indicating success (0) or failure (non-zero)
+ * Returns 0 on success, -1 on allocation failure (errno set).
  */
 static int addCookie(struct Cookie** p, int wd, const char* path, const char* name, uint32_t cookie)
 {
@@ -140,15 +125,12 @@ static int addCookie(struct Cookie** p, int wd, const char* path, const char* na
 	return 0;
 }
 
-/**
- * @brief Retrieve a Cookie structure from a linked list by its cookie value
- *
- * Searches through the linked list starting at *head to find a Cookie
- * structure with the matching cookie value.
- *
- * @param head Pointer to the head of the Cookie linked list
- * @param cookie The cookie value to search for
- * @return Pointer to the matching Cookie structure if found, NULL otherwise
+/*
+ * Find and detach a pending cookie by its uint32 value. Returns the
+ * detached Cookie (caller owns it and must freeCookie) or NULL when
+ * nothing matches. The list scan starts at the head, which after head
+ * insertion (addCookie) is usually exactly one step for FROM/TO pairs
+ * that arrive consecutively.
  */
 static struct Cookie* getCookie(struct Cookie** head, uint32_t cookie)
 {
@@ -177,14 +159,7 @@ static struct Cookie* getCookie(struct Cookie** head, uint32_t cookie)
 	return NULL;
 }
 
-/**
- * @brief Frees resources associated with a Cookie structure.
- *
- * This function deallocates memory and cleans up any resources
- * that were allocated for the given Cookie structure.
- *
- * @param p Pointer to the Cookie structure to be freed.
- */
+/* Release a Cookie detached from the list. */
 static void freeCookie(struct Cookie* p)
 {
 	free(p->name);
@@ -315,15 +290,10 @@ static struct inotify_event* pullChainEvent(Notify* ntf)
 	return event;
 }
 
-/**
- * @brief Updates the maximum name length in the notification structure
- *
- * This function examines the given path and updates the internal maximum
- * name length tracking in the notification structure if the current path
- * has a longer name component than previously recorded.
- *
- * @param ntf Pointer to the notification structure to update
- * @param path The path string to evaluate
+/*
+ * Track the maximum NAME_MAX across all watched paths; the FIONREAD
+ * size sanity check in waitNotify multiplies this by max_queued_events
+ * to bound an acceptable buffer size.
  */
 static void updateMaxName(Notify* ntf, char* path)
 {
@@ -499,17 +469,23 @@ static int addNotify(Notify* ntf, const char* path, uint32_t cookie)
 	return 1;
 }
 
-/**
- * @brief Initializes a new notification monitor
+/*
+ * Public API.
  *
- * Creates and initializes a notification monitor that watches the specified paths
- * for file system events that match the given event mask, excluding paths that
- * match the exclude pattern.
+ * Initialise a Notify monitoring `path` (NULL-terminated array of
+ * absolute paths). `mask` is the inotify event mask to install on
+ * every watch; IN_DONT_FOLLOW is added unconditionally. `exclude`,
+ * if non-NULL, is compiled as POSIX extended regex and any event
+ * whose `name` field matches is dropped before it reaches the chain.
  *
- * @param path Array of paths to monitor for changes (NULL-terminated)
- * @param mask Bit mask specifying the events to monitor (e.g., IN_CREATE, IN_DELETE, etc.)
- * @param exclude Regex pattern for paths to exclude from monitoring (NULL for no exclusion)
- * @return Pointer to a newly allocated Notify structure, or NULL on failure
+ * Each path is descended recursively: existing entries are surfaced
+ * as synthetic IN_CREATE events (and IN_CLOSE_WRITE for regular
+ * files) so the caller never has to do an initial scan separately.
+ *
+ * Returns a Notify* on success. Returns NULL with errno set on
+ * failure: EINVAL for a NULL/empty path array, ENOENT when none of
+ * the supplied paths existed at install time, or any errno from
+ * inotify_init/inotify_add_watch/malloc.
  */
 Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 {
@@ -634,17 +610,16 @@ Notify* initNotify(char** path, const uint32_t mask, const char* exclude)
 	return ntf;
 }
 
-/**
- * @brief Updates file system watches after a rename operation
+/*
+ * Rewrite every path in ntf->w[] that lives under `oldpath` so the
+ * prefix becomes `newpath`. Called when a watched directory is moved
+ * inside the watch set: the kernel keeps the wd, but our cached path
+ * for that wd (and for any descendant watch) becomes stale and needs
+ * to be patched up. Whole-prefix replacement, including a guard that
+ * we only match `oldpath` itself or `oldpath/`-something — not a path
+ * that merely begins with the same characters (e.g. /foo vs /foobar).
  *
- * This function updates the notification system's internal watches when a watched
- * file or directory is renamed from oldpath to newpath.
- *
- * @param ntf Pointer to the notification system structure
- * @param oldpath The previous path of the watched file/directory
- * @param newpath The new path of the watched file/directory
- *
- * @return 0 on success, or a negative error code on failure
+ * Returns 0 on success, -1 on allocation failure (errno set).
  */
 static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 {
@@ -672,18 +647,13 @@ static int renameWatches(Notify* ntf, const char* oldpath, const char* newpath)
 	return 0;
 }
 
-/**
- * @brief Reads a total of specified bytes from a file descriptor into a buffer
- *
- * This function attempts to read exactly 'len' bytes from the given file descriptor
- * into the buffer. It may perform multiple read operations to handle partial reads
- * until the requested amount is fully read or an error occurs.
- *
- * @param fd The file descriptor to read from
- * @param buf Pointer to the buffer pointer where data will be stored
- * @param len The number of bytes to read
- *
- * @return The total number of bytes read, or -1 if an error occurred
+/*
+ * Read exactly `len` bytes from `fd` into `*buf`, looping over short
+ * reads and retrying on EINTR/EAGAIN. Returns the total number read
+ * (which may be < len at EOF) or -1 on a non-recoverable read error
+ * (errno set). The `buf` is a pointer-to-pointer only to keep the
+ * caller's existing variable mutable through the call; the function
+ * does not realloc.
  */
 static ssize_t totalRead(int fd, char** buf, size_t len)
 {
@@ -714,14 +684,15 @@ static ssize_t totalRead(int fd, char** buf, size_t len)
 	return total_read;
 }
 
-/**
- * @brief Validates if a file descriptor is valid/open
+/*
+ * Non-blocking probe: does `fd` have data ready right now?
  *
- * Checks whether the provided file descriptor is a valid file descriptor
- * that can be used for I/O operations.
- * 
- * @param fd The file descriptor to check
- * @return int Returns 0 if the file descriptor is valid, negative value otherwise
+ *   > 0  data ready (select() reported fd readable)
+ *   = 0  no data ready
+ *   < 0  error (errno set; typically EBADF)
+ *
+ * Used by waitNotify to decide whether to skip select() and read
+ * immediately, vs. fall through to the blocking wait.
  */
 static int checkFd(int fd)
 {
@@ -732,18 +703,16 @@ static int checkFd(int fd)
 	return select(fd + 1, &set, NULL, NULL, &t);
 }
 
-/**
- * @brief Performs a select operation on a file descriptor with a timeout
+/*
+ * Wait for `fd` to become readable, up to `timeout` milliseconds.
  *
- * This function monitors the given file descriptor to check if it's ready
- * for reading, with a specified timeout period.
+ *   timeout < 0   block indefinitely
+ *   timeout = 0   non-blocking poll
+ *   timeout > 0   wait at most that many milliseconds
  *
- * @param fd      The file descriptor to monitor
- * @param timeout The maximum time to wait in milliseconds, or -1 for infinite wait
- *
- * @return Returns positive value if the descriptor is ready,
- *         0 if the timeout expired,
- *         or -1 if an error occurred
+ *   > 0  fd is readable
+ *   = 0  timeout expired with no activity
+ *   < 0  error (errno set)
  */
 static int Select(int fd, int timeout)
 {
@@ -771,20 +740,32 @@ static char* watchPath(const Notify* ntf, int wd)
 	return ntf->w[wd - 1];
 }
 
-/**
- * @brief Waits for a notification event to occur.
+/*
+ * Public API.
  *
- * This function blocks until a notification event occurs, a timeout is reached,
- * or an error happens. When an event occurs, information about the event is
- * returned through the pointer parameters.
+ * Wait for the next filesystem event on `ntf`. When an event is
+ * delivered:
+ *   *path   is set to a freshly malloc'd null-terminated absolute
+ *           path (caller frees);
+ *   *mask   is set to the inotify mask bits, or IN_Q_OVERFLOW if
+ *           the kernel's queue was lost (synthetic);
+ *   *cookie is set to the kernel-assigned cookie if non-NULL.
  *
- * @param ntf The notification context to wait on.
- * @param path Pointer to receive the path string related to the event.
- * @param mask Pointer to receive the event type mask.
- * @param timeout Maximum time to wait in milliseconds. Use -1 for infinite wait.
- * @param cookie Pointer to receive the cookie value for related events.
+ * `mask` and `cookie` may be NULL; `path` must not be.
  *
- * @return 0 on success, negative value on error or timeout.
+ * `timeout` follows the same -1/0/>0 convention as Select(): -1 is
+ * block forever, 0 is non-blocking poll, >0 is milliseconds.
+ *
+ * Returns:
+ *    0  on event delivered.
+ *  >0   timeout: returns the original `timeout` value unchanged.
+ *   -1  error (errno set). EINVAL for a NULL ntf/path; EPROTO for a
+ *       truncated event; any errno from the underlying read/select.
+ *
+ * The internal recursive-watch bookkeeping (auto-adding watches on
+ * IN_CREATE|IN_ISDIR, renaming on IN_MOVED_TO, retiring on
+ * IN_IGNORED) happens before this call returns, transparent to the
+ * caller.
  */
 int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint32_t* cookie)
 {
@@ -1030,14 +1011,14 @@ int waitNotify(Notify* ntf, char** const path, uint32_t* mask, int timeout, uint
 	return 0;
 }
 
-/**
- * @brief Frees resources associated with a Notify object
+/*
+ * Public API.
  *
- * This function deallocates memory and resources that were allocated for the
- * given Notify structure. After calling this function, the pointer should not
- * be used anymore as it becomes invalid.
- *
- * @param ntf Pointer to the Notify structure to be freed
+ * Release every resource owned by a Notify: drain the chain, drop
+ * pending cookies, release each cached path, remove every watch,
+ * close the inotify fd, and free the exclude regex. errno across
+ * the call is preserved (some of the cleanup syscalls would
+ * clobber it). Safe to pass NULL.
  */
 void freeNotify(Notify* ntf)
 {
