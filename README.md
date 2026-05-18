@@ -16,8 +16,10 @@ A C library for efficient recursive directory monitoring using Linux's inotify A
 ### Prerequisites
 
 - Linux system with inotify support
-- GCC or compatible compiler
-- libcurl and json-c libraries
+- C11-capable compiler (GCC ≥ 4.6 or Clang ≥ 3.3)
+- GNU make
+
+No third-party libraries are required; the library only links libc.
 
 ### Building the Library
 
@@ -25,7 +27,14 @@ A C library for efficient recursive directory monitoring using Linux's inotify A
 git clone https://github.com/zmushko/librnotify.git
 cd librnotify
 make
+sudo make install                  # installs under /usr/local by default
+# Override the layout if needed:
+sudo make PREFIX=/usr install
 ```
+
+`make` produces a shared library (`librnotify.so` plus the SONAME-versioned
+symlinks), a static archive (`librnotify.a`), and a `pkg-config` file
+(`librnotify.pc`).
 
 ## Usage
 
@@ -66,8 +75,16 @@ int main(int argc, char** argv) {
 
 ### Compile Your Program
 
+After `make install`, link against the system-installed library:
+
 ```bash
-gcc -o my_program my_program.c -L/path/to/librnotify -lrnotify -lcurl -ljson-c
+gcc -o my_program my_program.c $(pkg-config --cflags --libs librnotify)
+```
+
+Or, when linking against a local in-tree build:
+
+```bash
+gcc -o my_program my_program.c -I/path/to/librnotify -L/path/to/librnotify -lrnotify
 ```
 
 ## API Reference
