@@ -11,6 +11,20 @@ A C library for efficient recursive directory monitoring using Linux's inotify A
 - **Cookie Tracking**: Properly tracks file/directory move operations
 - **Extensive Event Types**: Support for all inotify event types
 
+## Nitice / Restrictions
+
+Duplicate IN_CREATE events:
+
+When a new subdirectory is created, librnotify performs readdir() after inotify_add_watch() and synthesizes events for files that appeared in between. 
+This closes the inotify race condition that loses events in inotifywait -r and most other recursive wrappers.
+
+The trade-off: during bulk operations (e.g., unpacking an archive, cp -r of a large tree, batch download), some files may receive duplicate IN_CREATE events — one synthetic from readdir(), one real from the kernel queue. 
+In typical workloads (IDE editing, log writes, config updates), duplicates are negligible.
+
+Consumers should be **idempotent**. 
+
+Production-tested on NETGEAR NAS with multi-million-file trees and concurrent client access.
+
 ## Installation
 
 ### Prerequisites
